@@ -18,7 +18,7 @@ async function calculateUberEarnings() {
     const yesterdayBalance = balances[1].properties['Account B Balance'].number || 0;
 
     const earnings = Math.max(0, todayBalance - yesterdayBalance);
-    console.log(`Uber earnings calculated: ${earnings} (Today: ${todayBalance}, Yesterday: ${yesterdayBalance})`);
+    console.log(`Uber earnings calculated: $${earnings} (Today: $${todayBalance}, Yesterday: $${yesterdayBalance})`);
     
     return earnings;
   } catch (error) {
@@ -36,13 +36,13 @@ function generateSummary(results) {
     const totalInterest = results.debt_updates.reduce((sum, debt) => 
       sum + (debt.new_amount - debt.old_amount), 0
     );
-    summaryParts.push(`Applied ${totalInterest.toFixed(2)} in daily interest to existing debts.`);
+    summaryParts.push(`Applied $${totalInterest.toFixed(2)} in daily interest to existing debts.`);
   }
 
   // New debt assigned
   if (results.new_debt_assigned.length > 0) {
     const totalNewDebt = results.new_debt_assigned.reduce((sum, debt) => sum + debt.amount, 0);
-    summaryParts.push(`Assigned ${totalNewDebt} in new debt for violations.`);
+    summaryParts.push(`Assigned $${totalNewDebt} in new debt for violations.`);
   }
 
   // Uber earnings and debt payments
@@ -51,15 +51,15 @@ function generateSummary(results) {
       const totalPaid = results.debt_payments_made.reduce((sum, payment) => 
         sum + payment.payment_amount, 0
       );
-      summaryParts.push(`Your ${results.uber_earnings_processed} Uber earnings paid ${totalPaid} toward debt.`);
+      summaryParts.push(`Your $${results.uber_earnings_processed} Uber earnings paid $${totalPaid} toward debt.`);
     } else {
-      summaryParts.push(`Your ${results.uber_earnings_processed} Uber earnings earned a matching bonus.`);
+      summaryParts.push(`Your $${results.uber_earnings_processed} Uber earnings earned a matching bonus.`);
     }
   }
 
   // Bonuses earned
   if (results.total_bonus_amount > 0) {
-    summaryParts.push(`Today's bonuses total ${results.total_bonus_amount}.`);
+    summaryParts.push(`Today's bonuses total $${results.total_bonus_amount}.`);
   } else {
     summaryParts.push(`No bonuses earned today.`);
   }
@@ -128,151 +128,79 @@ async function runReconciliation(req, res) {
     // Step 5: Calculate Uber earnings and process debt payments
     console.log('Processing Uber earnings...');
     const uberEarnings = await calculateUberEarnings();
-      results.uber_earnings_processed = uberEarnings;
+    results.uber_earnings_processed = uberEarnings;
 
-      if (uberEarnings > 0) {
-        const paymentResults = await debtService.processUberEarnings(uberEarnings);
-        results.debt_payments_made = paymentResults.payments;
-        
-        // If there are remaining earnings after debt payment, create match bonus
-        if (paymentResults.remaining > 0) {
-          const uberBonus = await bonusService.createUberMatchBonus(paymentResults.remaining, today);
-          results.new_bonuses.push(uberBonus);
-        }
-      }
-
-      // Step 6: Check for workout bonuses
-      console.log('Checking workout bonuses...');
-      const workoutBonuses = await bonusService.checkWorkoutBonuses(today);
-      results.new_bonuses.push(...workoutBonuses);
-
-      // Step 7: Award all bonuses in Notion
-      if (results.new_bonuses.length > 0) {
-        console.log('Awarding bonuses...');
-        const awardedBonuses = await bonusService.awardBonuses(results.new_bonuses);
-        results.total_bonus_amount = bonusService.getTotalBonusAmount(results.new_bonuses);
-        
-        // Replace bonus objects with awarded results
-        results.new_bonuses = awardedBonuses;
-      }
-
-      // Step 8: Generate summary
-      results.summary = this.generateSummary(results);
-
-      console.log('Reconciliation complete');
-      res.json({
-        success: true,
-        results
-      });
-
-    } catch (error) {
-      console.error('Reconciliation error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-      });
-    }
-  }
-
-  // Calculate Uber earnings by comparing today's balance to yesterday's
-  async calculateUberEarnings() {
-    try {
-      const balances = await notionService.getLatestBalances(2);
+    if (uberEarnings > 0) {
+      const paymentResults = await debtService.processUberEarnings(uberEarnings);
+      results.debt_payments_made = paymentResults.payments;
       
-      if (balances.length < 2) {
-        console.log('Not enough balance history to calculate Uber earnings');
-        return 0;
-      }
-
-      const todayBalance = balances[0].properties['Account B Balance'].number || 0;
-      const yesterdayBalance = balances[1].properties['Account B Balance'].number || 0;
-
-      const earnings = Math.max(0, todayBalance - yesterdayBalance);
-      console.log(`Uber earnings calculated: ${earnings} (Today: ${todayBalance}, Yesterday: ${yesterdayBalance})`);
-      
-      return earnings;
-    } catch (error) {
-      console.error('Error calculating Uber earnings:', error);
-      return 0;
-    }
-  }
-
-  // Generate human-readable summary of reconciliation results
-  generateSummary(results) {
-    const summaryParts = [];
-
-    // Debt updates
-    if (results.debt_updates.length > 0) {
-      const totalInterest = results.debt_updates.reduce((sum, debt) => 
-        sum + (debt.new_amount - debt.old_amount), 0
-      );
-      summaryParts.push(`Applied ${totalInterest.toFixed(2)} in daily interest to existing debts.`);
-    }
-
-    // New debt assigned
-    if (results.new_debt_assigned.length > 0) {
-      const totalNewDebt = results.new_debt_assigned.reduce((sum, debt) => sum + debt.amount, 0);
-      summaryParts.push(`Assigned ${totalNewDebt} in new debt for violations.`);
-    }
-
-    // Uber earnings and debt payments
-    if (results.uber_earnings_processed > 0) {
-      if (results.debt_payments_made.length > 0) {
-        const totalPaid = results.debt_payments_made.reduce((sum, payment) => 
-          sum + payment.payment_amount, 0
-        );
-        summaryParts.push(`Your ${results.uber_earnings_processed} Uber earnings paid ${totalPaid} toward debt.`);
-      } else {
-        summaryParts.push(`Your ${results.uber_earnings_processed} Uber earnings earned a matching bonus.`);
+      // If there are remaining earnings after debt payment, create match bonus
+      if (paymentResults.remaining > 0) {
+        const uberBonus = await bonusService.createUberMatchBonus(paymentResults.remaining, today);
+        results.new_bonuses.push(uberBonus);
       }
     }
 
-    // Bonuses earned
-    if (results.total_bonus_amount > 0) {
-      summaryParts.push(`Today's bonuses total ${results.total_bonus_amount}.`);
-    } else {
-      summaryParts.push(`No bonuses earned today.`);
-    }
+    // Step 6: Check for workout bonuses
+    console.log('Checking workout bonuses...');
+    const workoutBonuses = await bonusService.checkWorkoutBonuses(today);
+    results.new_bonuses.push(...workoutBonuses);
 
-    // Punishments
-    if (results.new_punishments.length > 0) {
-      const punishmentCount = results.new_punishments.length;
-      summaryParts.push(`Assigned ${punishmentCount} new punishment${punishmentCount > 1 ? 's' : ''}.`);
-    }
-
-    if (results.completed_punishments.length > 0) {
-      const completedCount = results.completed_punishments.length;
-      summaryParts.push(`Completed ${completedCount} punishment assignment${completedCount > 1 ? 's' : ''}.`);
-    }
-
-    return summaryParts.length > 0 ? summaryParts.join(' ') : 'No significant activity today.';
-  }
-
-  // Health check endpoint for the reconciliation system
-  async healthCheck(req, res) {
-    try {
-      // Test Notion connection
-      await notionService.getLatestBalances(1);
+    // Step 7: Award all bonuses in Notion
+    if (results.new_bonuses.length > 0) {
+      console.log('Awarding bonuses...');
+      const awardedBonuses = await bonusService.awardBonuses(results.new_bonuses);
+      results.total_bonus_amount = bonusService.getTotalBonusAmount(results.new_bonuses);
       
-      res.json({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        services: {
-          notion: 'connected',
-          debt: 'ready',
-          bonuses: 'ready',
-          punishments: 'ready'
-        }
-      });
-    } catch (error) {
-      res.status(503).json({
-        status: 'unhealthy',
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
+      // Replace bonus objects with awarded results
+      results.new_bonuses = awardedBonuses;
     }
+
+    // Step 8: Generate summary
+    results.summary = generateSummary(results);
+
+    console.log('Reconciliation complete');
+    res.json({
+      success: true,
+      results
+    });
+
+  } catch (error) {
+    console.error('Reconciliation error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }
 
-module.exports = new ReconciliationController();
+// Health check endpoint for the reconciliation system
+async function healthCheck(req, res) {
+  try {
+    // Test Notion connection
+    await notionService.getLatestBalances(1);
+    
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: {
+        notion: 'connected',
+        debt: 'ready',
+        bonuses: 'ready',
+        punishments: 'ready'
+      }
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+module.exports = {
+  runReconciliation,
+  healthCheck
+};
