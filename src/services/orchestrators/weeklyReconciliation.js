@@ -4,8 +4,9 @@ const { format, startOfWeek, endOfWeek, subWeeks } = require('date-fns');
 const workoutService = require('../core/workouts');
 const bonusService = require('../core/bonuses');
 const punishmentService = require('../core/punishments');
+const notionService = require('../notion');
 
-// Import legacy services for now
+// Import legacy services - these should be converted to core services eventually
 const rulesService = require('../rules');
 const habiticaService = require('../integrations/habitica/HabiticaService');
 
@@ -52,12 +53,12 @@ class WeeklyReconciliationOrchestrator {
       results.workouts.violations = workoutViolations;
       results.workouts.requirements_met = workoutViolations.length === 0;
 
-      // Step 3: Process weekly bonuses
+      // Step 3: Process weekly bonuses - DIRECT IMPLEMENTATION
       console.log('🎁 Processing weekly bonuses...');
       const bonusResults = await this.processWeeklyBonuses(targetWeekStart, results.workouts.performance);
       results.bonuses = bonusResults;
 
-      // Step 4: Check other weekly violations (Habitica-based)
+      // Step 4: Check other weekly violations (Habitica-based) - DIRECT IMPLEMENTATION
       console.log('📋 Checking Habitica-based violations...');
       const habiticaViolations = await this.checkHabiticaViolations(targetWeekStart, targetWeekEnd);
       results.punishments.weekly_violations = [...workoutViolations, ...habiticaViolations];
@@ -69,7 +70,7 @@ class WeeklyReconciliationOrchestrator {
         results.punishments.weekly_punishments = weeklyPunishments;
       }
 
-      // Step 6: Update Habitica habits (optional)
+      // Step 6: Update Habitica habits (optional) - DIRECT IMPLEMENTATION
       console.log('🎯 Updating Habitica habits...');
       results.habitica.updates = await this.updateHabiticaHabits(targetWeekStart, results.workouts.performance);
 
@@ -87,11 +88,12 @@ class WeeklyReconciliationOrchestrator {
     }
   }
 
+  // DIRECT IMPLEMENTATION - Check workout requirements
   async checkWorkoutRequirements(workoutPerformance) {
     const violations = [];
     
     try {
-      // Check yoga minimum
+      // Check yoga minimum (using rules service for now)
       const yogaMinimum = await rulesService.getNumericValue('weekly_yoga_minimum') || 3;
       if (workoutPerformance.yoga_sessions < yogaMinimum) {
         violations.push({
@@ -102,7 +104,9 @@ class WeeklyReconciliationOrchestrator {
         });
       }
 
-      // Could add lifting minimum, total workout minimums, etc.
+      // Optional: Could add lifting minimum, total workout minimums, etc.
+      // const liftingMinimum = await rulesService.getNumericValue('weekly_lifting_minimum') || 2;
+      // if (workoutPerformance.lifting_sessions < liftingMinimum) { ... }
       
     } catch (error) {
       console.error('Error checking workout requirements:', error);
@@ -111,14 +115,78 @@ class WeeklyReconciliationOrchestrator {
     return violations;
   }
 
+  // DIRECT IMPLEMENTATION - Process weekly bonuses
   async processWeeklyBonuses(weekStart, workoutPerformance) {
     try {
-      const bonusResults = await bonusService.processWeeklyBonuses(weekStart, workoutPerformance);
+      const weeklyBonuses = [];
+
+      // Perfect week bonus (3 yoga + 3 lifting)
+      const yogaTarget = await rulesService.getNumericValue('weekly_yoga_target') || 3;
+      const liftingTarget = await rulesService.getNumericValue('weekly_lifting_target') || 3;
       
-      return {
-        weekly_bonuses: bonusResults,
-        total_amount: bonusResults.reduce((sum, bonus) => sum + (bonus.amount || 0), 0)
-      };
+      if (workoutPerformance.yoga_sessions >= yogaTarget && workoutPerformance.lifting_sessions >= liftingTarget) {
+        const perfectWeekBonus = {
+          type: 'perfect_week',
+          amount: await rulesService.getNumericValue('perfect_week_bonus') || 50,
+          description: `Perfect week: ${workoutPerformance.yoga_sessions} yoga + ${workoutPerformance.lifting_sessions} lifting`,
+          week_start: weekStart
+        };
+        weeklyBonuses.push(perfectWeekBonus);
+      }
+
+      // Job applications bonus
+      const jobAppsCount = await this.getJobApplicationsCountFromHabitica();
+      const jobAppsMinimum = await rulesService.getNumericValue('job_applications_minimum') || 25;
+      
+      if (jobAppsCount >= jobAppsMinimum) {
+        const jobAppsBonus = {
+          type: 'job_applications',
+          amount: await rulesService.getNumericValue('job_applications_bonus') || 50,
+          description: `Job applications: ${jobAppsCount}/${jobAppsMinimum}`,
+          week_start: weekStart
+        };
+        weeklyBonuses.push(jobAppsBonus);
+      }
+
+      // AlgoExpert problems bonus
+      const algoProblemsCount = await this.getAlgoExpertProblemsFromHabitica();
+      const algoProblemsMinimum = await rulesService.getNumericValue('algoexpert_minimum') || 7;
+      
+      if (algoProblemsCount >= algoProblemsMinimum) {
+        const algoBonus = {
+          type: 'algoexpert',
+          amount: await rulesService.getNumericValue('algoexpert_bonus') || 25,
+          description: `AlgoExpert problems: ${algoProblemsCount}/${algoProblemsMinimum}`,
+          week_start: weekStart
+        };
+        weeklyBonuses.push(algoBonus);
+      }
+
+      // Office attendance bonus (if applicable)
+      const officeAttendance = await this.getOfficeAttendanceFromHabitica();
+      const officeMinimum = await rulesService.getNumericValue('office_attendance_minimum') || 3;
+      
+      if (officeAttendance >= officeMinimum) {
+        const officeBonus = {
+          type: 'office_attendance',
+          amount: await rulesService.getNumericValue('office_attendance_bonus') || 30,
+          description: `Office attendance: ${officeAttendance}/${officeMinimum} days`,
+          week_start: weekStart
+        };
+        weeklyBonuses.push(officeBonus);
+      }
+
+      // Award bonuses via bonusService
+      if (weeklyBonuses.length > 0) {
+        const awardedBonuses = await bonusService.awardBonuses(weeklyBonuses);
+        
+        return {
+          weekly_bonuses: awardedBonuses,
+          total_amount: awardedBonuses.reduce((sum, bonus) => sum + (bonus.amount || 0), 0)
+        };
+      }
+
+      return { weekly_bonuses: [], total_amount: 0 };
 
     } catch (error) {
       console.error('Error processing weekly bonuses:', error);
@@ -126,11 +194,12 @@ class WeeklyReconciliationOrchestrator {
     }
   }
 
+  // DIRECT IMPLEMENTATION - Check Habitica violations
   async checkHabiticaViolations(weekStart, weekEnd) {
     const violations = [];
     
     try {
-      // Check job applications
+      // Check job applications shortfall
       const jobAppsCount = await this.getJobApplicationsCountFromHabitica();
       const jobAppsMinimum = await rulesService.getNumericValue('job_applications_minimum') || 25;
       
@@ -139,33 +208,36 @@ class WeeklyReconciliationOrchestrator {
           type: 'job_applications_shortfall',
           reason: `Only completed ${jobAppsCount}/${jobAppsMinimum} job applications this week`,
           severity: 'weekly_violation',
-          category: 'career_violation'
+          category: 'career_violation',
+          recommended_punishment: '60_minute_cardio'
         });
       }
 
-      // Check AlgoExpert problems
+      // Check AlgoExpert problems shortfall
       const algoProblemsCount = await this.getAlgoExpertProblemsFromHabitica();
-      const algoMinimum = await rulesService.getNumericValue('algoexpert_problems_minimum') || 7;
+      const algoProblemsMinimum = await rulesService.getNumericValue('algoexpert_minimum') || 7;
       
-      if (algoProblemsCount < algoMinimum) {
+      if (algoProblemsCount < algoProblemsMinimum) {
         violations.push({
           type: 'algoexpert_shortfall',
-          reason: `Only completed ${algoProblemsCount}/${algoMinimum} AlgoExpert problems this week`,
+          reason: `Only completed ${algoProblemsCount}/${algoProblemsMinimum} AlgoExpert problems this week`,
           severity: 'weekly_violation',
-          category: 'career_violation'
+          category: 'career_violation',
+          recommended_punishment: '45_minute_cardio'
         });
       }
 
-      // Check office attendance
-      const officeCount = await this.getOfficeAttendanceFromHabitica();
-      const officeMinimum = await rulesService.getNumericValue('office_attendance_minimum') || 4;
+      // Check office attendance (if applicable)
+      const officeAttendance = await this.getOfficeAttendanceFromHabitica();
+      const officeMinimum = await rulesService.getNumericValue('office_attendance_minimum') || 3;
       
-      if (officeCount < officeMinimum) {
+      if (officeAttendance < officeMinimum) {
         violations.push({
           type: 'office_attendance_shortfall',
-          reason: `Only attended office ${officeCount}/${officeMinimum} days this week`,
+          reason: `Only attended office ${officeAttendance}/${officeMinimum} days this week`,
           severity: 'weekly_violation',
-          category: 'career_violation'
+          category: 'career_violation',
+          recommended_punishment: '30_minute_cardio'
         });
       }
 
@@ -176,33 +248,80 @@ class WeeklyReconciliationOrchestrator {
     return violations;
   }
 
+  // Process weekly violations into punishment assignments
   async processWeeklyViolations(violations) {
     const punishments = [];
-    
-    for (const violation of violations) {
-      try {
-        // Use the punishment service to assign punishment
-        const punishment = await punishmentService.processNewViolations(violation.reason);
-        punishments.push(...punishment);
-      } catch (error) {
-        console.error(`Error processing violation: ${violation.reason}`, error);
+
+    try {
+      for (const violation of violations) {
+        let punishmentMinutes = 30; // Default
+        
+        // Determine punishment duration based on violation type
+        switch (violation.type) {
+          case 'weekly_yoga_shortfall':
+            punishmentMinutes = 45;
+            break;
+          case 'job_applications_shortfall':
+            punishmentMinutes = 60;
+            break;
+          case 'algoexpert_shortfall':
+            punishmentMinutes = 45;
+            break;
+          case 'office_attendance_shortfall':
+            punishmentMinutes = 30;
+            break;
+        }
+
+        // Create punishment via punishmentService
+        const punishment = await punishmentService.assignPunishment({
+          type: 'weekly_violation',
+          reason: violation.reason,
+          minutes: punishmentMinutes,
+          category: violation.category || 'weekly_violation',
+          due_date: format(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd') // Due in 1 week
+        });
+
+        punishments.push(punishment);
+        console.log(`Assigned ${punishmentMinutes}min punishment for: ${violation.reason}`);
       }
+
+    } catch (error) {
+      console.error('Error processing weekly violations:', error);
     }
 
     return punishments;
   }
 
+  // DIRECT IMPLEMENTATION - Update Habitica habits
   async updateHabiticaHabits(weekStart, workoutPerformance) {
     const updates = [];
-    
+
     try {
-      // Initialize habits if they don't exist
-      const habitResults = await habiticaService.initializeWeeklyHabits();
-      updates.push(...habitResults);
-      
-      // Score habits based on performance (future enhancement)
-      // Could score job apps, office attendance, etc.
-      
+      if (!habiticaService) {
+        console.log('Habitica service not available, skipping habit updates');
+        return updates;
+      }
+
+      // Update workout consistency habit
+      const workoutConsistency = this.calculateWorkoutConsistency(workoutPerformance);
+      if (workoutConsistency >= 0.8) {
+        await habiticaService.scoreHabit('workout_consistency', 'up');
+        updates.push({ habit: 'workout_consistency', direction: 'up', reason: 'Good workout consistency' });
+      } else if (workoutConsistency < 0.5) {
+        await habiticaService.scoreHabit('workout_consistency', 'down');
+        updates.push({ habit: 'workout_consistency', direction: 'down', reason: 'Poor workout consistency' });
+      }
+
+      // Update discipline habit based on violations
+      const hasViolations = workoutPerformance.yoga_sessions < 3;
+      if (!hasViolations) {
+        await habiticaService.scoreHabit('discipline', 'up');
+        updates.push({ habit: 'discipline', direction: 'up', reason: 'No weekly violations' });
+      } else {
+        await habiticaService.scoreHabit('discipline', 'down');
+        updates.push({ habit: 'discipline', direction: 'down', reason: 'Had weekly violations' });
+      }
+
     } catch (error) {
       console.error('Error updating Habitica habits:', error);
     }
@@ -210,14 +329,18 @@ class WeeklyReconciliationOrchestrator {
     return updates;
   }
 
-  // Habitica data retrieval methods
+  // Helper method to calculate workout consistency
+  calculateWorkoutConsistency(workoutPerformance) {
+    const expectedTotal = 6; // 3 yoga + 3 lifting per week
+    const actualTotal = workoutPerformance.yoga_sessions + workoutPerformance.lifting_sessions;
+    return Math.min(actualTotal / expectedTotal, 1.0);
+  }
+
+  // Habitica integration methods - DIRECT IMPLEMENTATION
   async getJobApplicationsCountFromHabitica() {
     try {
-      const habits = await habiticaService.getHabits();
-      const jobAppsHabit = habits.find(habit => 
-        habit.text.includes('Job Applications') && habit.text.includes('Weekly')
-      );
-      return jobAppsHabit?.counterUp || 0;
+      if (!habiticaService) return 0;
+      return await habiticaService.getTodoCompletionCount('job_applications') || 0;
     } catch (error) {
       console.error('Error getting job applications count:', error);
       return 0;
@@ -226,11 +349,8 @@ class WeeklyReconciliationOrchestrator {
 
   async getAlgoExpertProblemsFromHabitica() {
     try {
-      const habits = await habiticaService.getHabits();
-      const algoHabit = habits.find(habit => 
-        habit.text.includes('AlgoExpert') && habit.text.includes('Weekly')
-      );
-      return algoHabit?.counterUp || 0;
+      if (!habiticaService) return 0;
+      return await habiticaService.getTodoCompletionCount('algoexpert_problems') || 0;
     } catch (error) {
       console.error('Error getting AlgoExpert problems count:', error);
       return 0;
@@ -239,46 +359,47 @@ class WeeklyReconciliationOrchestrator {
 
   async getOfficeAttendanceFromHabitica() {
     try {
-      const habits = await habiticaService.getHabits();
-      const officeHabit = habits.find(habit => 
-        habit.text.includes('Office Attendance') && habit.text.includes('Weekly')
-      );
-      return officeHabit?.counterUp || 0;
+      if (!habiticaService) return 0;
+      return await habiticaService.getDailyCompletionCount('office_attendance') || 0;
     } catch (error) {
       console.error('Error getting office attendance count:', error);
       return 0;
     }
   }
 
+  // Generate weekly summary
   generateWeeklySummary(results) {
     const summaryParts = [];
 
     // Workout performance
-    if (results.workouts.requirements_met) {
-      summaryParts.push(`Met all workout requirements.`);
-    } else {
-      summaryParts.push(`${results.workouts.violations.length} workout violation(s).`);
+    if (results.workouts.performance) {
+      summaryParts.push(`Completed ${results.workouts.performance.yoga_sessions} yoga and ${results.workouts.performance.lifting_sessions} lifting sessions.`);
     }
 
     // Bonuses
     if (results.bonuses.total_amount > 0) {
       summaryParts.push(`Earned $${results.bonuses.total_amount} in weekly bonuses.`);
     } else {
-      summaryParts.push(`No weekly bonuses earned.`);
+      summaryParts.push('No weekly bonuses earned.');
     }
 
-    // Punishments
+    // Violations
+    if (results.punishments.weekly_violations.length > 0) {
+      summaryParts.push(`${results.punishments.weekly_violations.length} weekly violation(s) detected.`);
+    } else {
+      summaryParts.push('No weekly violations.');
+    }
+
+    // Punishments assigned
     if (results.punishments.weekly_punishments.length > 0) {
-      const totalMinutes = results.punishments.weekly_punishments.reduce((sum, p) => 
-        sum + (p.minutes || 0), 0
-      );
-      summaryParts.push(`Assigned ${totalMinutes} minutes of cardio punishment.`);
+      const totalMinutes = results.punishments.weekly_punishments.reduce((sum, p) => sum + (p.minutes || 0), 0);
+      summaryParts.push(`Assigned ${totalMinutes} minutes of punishment cardio.`);
     }
 
     return summaryParts.length > 0 ? summaryParts.join(' ') : 'No significant weekly activity.';
   }
 
-  // Get weekly status
+  // Get weekly status for reporting
   async getWeeklyStatus(weekStart = null) {
     try {
       const targetWeekStart = weekStart || format(startOfWeek(subWeeks(new Date(), 1)), 'yyyy-MM-dd');
@@ -288,7 +409,6 @@ class WeeklyReconciliationOrchestrator {
         week_start: targetWeekStart,
         week_end: targetWeekEnd,
         workout_performance: await workoutService.analyzeWeeklyPerformance(targetWeekStart, targetWeekEnd),
-        bonus_summary: await bonusService.getBonusSummary(targetWeekStart),
         habitica_status: {
           job_applications: await this.getJobApplicationsCountFromHabitica(),
           algoexpert_problems: await this.getAlgoExpertProblemsFromHabitica(),

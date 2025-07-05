@@ -1,6 +1,10 @@
 const { format } = require('date-fns');
+
+// Import orchestrators directly (no service wrappers)
 const dailyReconciliationOrchestrator = require('../services/orchestrators/dailyReconciliation');
-const weeklyReconciliationService = require('../services/weeklyReconciliation');
+const weeklyReconciliationOrchestrator = require('../services/orchestrators/weeklyReconciliation');
+
+// Import other services
 const historyService = require('../services/history');
 const rulesService = require('../services/rules');
 const notionService = require('../services/notion');
@@ -10,7 +14,7 @@ async function runReconciliation(req, res) {
     const targetDate = req.body.date || null; // Optional: specify which date to process
     console.log(`Starting daily reconciliation for: ${targetDate || 'today'}`);
 
-    const results = await dailyReconciliationService.runDailyReconciliation(targetDate);
+    const results = await dailyReconciliationOrchestrator.runDailyReconciliation(targetDate);
 
     console.log('Daily reconciliation complete');
     res.json({
@@ -24,6 +28,31 @@ async function runReconciliation(req, res) {
     res.status(500).json({
       success: false,
       type: 'daily',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+}
+
+async function runWeeklyReconciliation(req, res) {
+  try {
+    const weekStart = req.body.week_start || null; // Optional: specify which week to process
+    console.log(`Starting weekly reconciliation for week starting: ${weekStart || 'last week'}`);
+
+    const results = await weeklyReconciliationOrchestrator.runWeeklyReconciliation(weekStart);
+
+    console.log('Weekly reconciliation complete');
+    res.json({
+      success: true,
+      type: 'weekly',
+      results
+    });
+
+  } catch (error) {
+    console.error('Weekly reconciliation error:', error);
+    res.status(500).json({
+      success: false,
+      type: 'weekly',
       error: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
@@ -51,31 +80,6 @@ async function healthCheck(req, res) {
       status: 'unhealthy',
       error: error.message,
       timestamp: new Date().toISOString()
-    });
-  }
-}
-
-async function runWeeklyReconciliation(req, res) {
-  try {
-    const weekStart = req.body.week_start || null; // Optional: specify which week to process
-    console.log(`Starting weekly reconciliation for week starting: ${weekStart || 'last week'}`);
-
-    const results = await weeklyReconciliationService.runWeeklyReconciliation(weekStart);
-
-    console.log('Weekly reconciliation complete');
-    res.json({
-      success: true,
-      type: 'weekly',
-      results
-    });
-
-  } catch (error) {
-    console.error('Weekly reconciliation error:', error);
-    res.status(500).json({
-      success: false,
-      type: 'weekly',
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
