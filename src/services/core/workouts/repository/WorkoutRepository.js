@@ -1,10 +1,9 @@
-const notionClient = require('../../../integrations/notion/client');
-const { DATABASE_IDS } = require('../../../integrations/notion/config');
+const notionClient = require('../../../integrations/notion');
 const Workout = require('../models/Workout');
 
 class WorkoutRepository {
   constructor() {
-    this.databaseId = DATABASE_IDS.WORKOUTS;
+    this.databaseId = process.env.WORKOUTS_DATABASE_ID;
   }
 
   async findByDate(date) {

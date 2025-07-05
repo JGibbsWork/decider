@@ -5,7 +5,7 @@ const punishmentService = require('../core/punishments');
 const bonusService = require('../core/bonuses');
 const workoutService = require('../core/workouts');
 const debtService = require('../core/debt');
-const notionService = require('../notion');
+const notionService = require('../integrations/notion');
 
 class DailyReconciliationOrchestrator {
 

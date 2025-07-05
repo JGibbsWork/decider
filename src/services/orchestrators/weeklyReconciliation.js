@@ -4,11 +4,11 @@ const { format, startOfWeek, endOfWeek, subWeeks } = require('date-fns');
 const workoutService = require('../core/workouts');
 const bonusService = require('../core/bonuses');
 const punishmentService = require('../core/punishments');
-const notionService = require('../notion');
+const notionService = require('../integrations/notion');
 
 // Import legacy services - these should be converted to core services eventually
-const rulesService = require('../rules');
-const habiticaService = require('../integrations/habitica/HabiticaService');
+const rulesService = require('../core/rules');
+const habiticaService = require('../integrations/habitica');
 
 class WeeklyReconciliationOrchestrator {
 

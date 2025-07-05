@@ -1,4 +1,4 @@
-const notionService = require('./notion');
+const notionService = require('../../integrations/notion');
 const { format } = require('date-fns');
 
 const SYSTEM_RULES_DB = process.env.SYSTEM_RULES_DATABASE_ID;

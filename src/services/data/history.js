@@ -1,5 +1,5 @@
 const { format, subDays, subWeeks, startOfWeek, endOfWeek } = require('date-fns');
-const notionService = require('./notion');
+const notionService = require('../integrations/notion/client');
 
 class HistoryService {
   

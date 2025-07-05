@@ -5,9 +5,9 @@ const dailyReconciliationOrchestrator = require('../services/orchestrators/daily
 const weeklyReconciliationOrchestrator = require('../services/orchestrators/weeklyReconciliation');
 
 // Import other services
-const historyService = require('../services/history');
-const rulesService = require('../services/rules');
-const notionService = require('../services/notion');
+const historyService = require('../services/data/history');
+const rulesService = require('../services/core/rules');
+const notionService = require('../services/integrations/notion');
 
 async function runReconciliation(req, res) {
   try {

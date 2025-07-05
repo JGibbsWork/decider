@@ -1,4 +1,4 @@
-const notionClient = require('../../../integrations/notion/client');
+const notionClient = require('../../../integrations/notion');
 const Bonus = require('../models/Bonus');
 
 class BonusRepository {

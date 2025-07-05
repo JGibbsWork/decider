@@ -1,5 +1,5 @@
 const punishmentRepo = require('../repository/PunishmentRepository');
-const habiticaService = require('../../../integrations/habitica/HabiticaService');
+const habiticaService = require('../../../integrations/habitica');
 
 class PunishmentAssigner {
   
