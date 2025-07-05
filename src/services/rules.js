@@ -1,73 +1,102 @@
 const notionService = require('./notion');
+const { format } = require('date-fns');
 
-const SYSTEM_RULES_DB = '227e3d1e-e83a-80e7-9019-e183a59667d8';
+const SYSTEM_RULES_DB = process.env.SYSTEM_RULES_DATABASE_ID;
 
 class RulesService {
   constructor() {
     this.cache = new Map();
-    this.cacheExpiry = new Map();
-    this.cacheTTL = 5 * 60 * 1000; // 5 minutes
+    this.cacheTimeout = 5 * 60 * 1000; // 5 minutes
   }
 
-  // Get all system rules and cache them
+  // Clear cache (useful after updates)
+  clearCache() {
+    this.cache.clear();
+  }
+
+  // Get cached value or fetch from Notion
+  async getCachedValue(key, fetchFunction) {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      return cached.value;
+    }
+
+    const value = await fetchFunction();
+    this.cache.set(key, { value, timestamp: Date.now() });
+    return value;
+  }
+
+  // Get all rules from the system rules database
   async getAllRules() {
-    const cacheKey = 'all_rules';
-    
-    // Check cache first
-    if (this.cache.has(cacheKey) && this.cacheExpiry.get(cacheKey) > Date.now()) {
-      return this.cache.get(cacheKey);
-    }
+    return await this.getCachedValue('all_rules', async () => {
+      try {
+        const response = await notionService.notion.databases.query({
+          database_id: SYSTEM_RULES_DB
+        });
 
-    const response = await notionService.notion.databases.query({
-      database_id: SYSTEM_RULES_DB
-    });
+        const rules = {};
+        
+        for (const page of response.results) {
+          const props = page.properties;
+          
+          const ruleName = props['Rule Name']?.title?.[0]?.plain_text;
+          if (!ruleName) continue;
 
-    const rules = {};
-    for (const rule of response.results) {
-      const ruleName = rule.properties['Rule Name'].title[0]?.text?.content;
-      const baseValue = rule.properties['Base Value'].rich_text[0]?.text?.content;
-      const calculatedValue = rule.properties['Calculated Value'].rich_text[0]?.text?.content;
-      const ruleType = rule.properties['Rule Type'].select?.name;
-      const frequency = rule.properties['Frequency']?.select?.name;
-      const punishable = rule.properties['Punishable']?.checkbox || false;
-      
-      if (ruleName) {
-        rules[ruleName] = {
-          type: ruleType,
-          frequency: frequency,
-          punishable: punishable,
-          baseValue: baseValue,
-          calculatedValue: calculatedValue || baseValue,
-          description: rule.properties['Description'].rich_text[0]?.text?.content || ''
-        };
+          const baseValue = props['Base Value']?.rich_text?.[0]?.plain_text || '';
+          const calculatedValue = props['Calculated Value']?.rich_text?.[0]?.plain_text || baseValue;
+          const modifier = props['Current Modifier']?.rich_text?.[0]?.plain_text || '0%';
+          const ruleType = props['Type']?.select?.name || 'unknown';
+          const frequency = props['Frequency']?.select?.name || 'unknown';
+          const punishable = props['Punishable']?.checkbox || false;
+          const description = props['Description']?.rich_text?.[0]?.plain_text || '';
+
+          rules[ruleName] = {
+            baseValue,
+            calculatedValue,
+            modifier,
+            type: ruleType,
+            frequency,
+            punishable,
+            description,
+            pageId: page.id
+          };
+        }
+
+        return rules;
+      } catch (error) {
+        console.error('Error fetching rules:', error);
+        throw error;
       }
-    }
-
-    // Cache the results
-    this.cache.set(cacheKey, rules);
-    this.cacheExpiry.set(cacheKey, Date.now() + this.cacheTTL);
-
-    return rules;
+    });
   }
 
-  // Get a specific rule value
+  // Get a specific rule by name
   async getRule(ruleName) {
     const rules = await this.getAllRules();
     return rules[ruleName];
   }
 
-  // Get numeric value from a rule (strips $ and % symbols)
+  // Get the numeric value from a rule (handles $, %, plain numbers)
   async getNumericValue(ruleName) {
     const rule = await this.getRule(ruleName);
-    if (!rule) return 0;
+    if (!rule) {
+      throw new Error(`Rule ${ruleName} not found`);
+    }
+
+    // Use calculated value if it exists, otherwise use base value
+    const value = rule.calculatedValue || rule.baseValue;
     
-    const value = rule.calculatedValue || rule.baseValue || '0';
-    // Remove $ and % symbols and convert to number
-    return parseFloat(value.replace(/[$%]/g, '')) || 0;
+    if (value.includes('$')) {
+      return parseFloat(value.replace('$', ''));
+    } else if (value.includes('%')) {
+      return parseFloat(value.replace('%', ''));
+    } else {
+      return parseFloat(value) || 0;
+    }
   }
 
-  // Get all bonus amounts
-  async getBonusAmounts() {
+  // Get all bonuses
+  async getAllBonuses() {
     const rules = await this.getAllRules();
     const bonuses = {};
     
@@ -196,147 +225,11 @@ class RulesService {
       
       // Calculate new value
       let newCalculatedValue;
-      if (baseValue.includes('
-
-  // Specific getter methods for commonly used values
-  async getLiftingBonus() {
-    return await this.getNumericValue('lifting_bonus_amount');
-  }
-
-  async getExtraYogaBonus() {
-    return await this.getNumericValue('extra_yoga_bonus_amount');
-  }
-
-  async getCardioPunishmentMinutes() {
-    return await this.getNumericValue('cardio_punishment_minutes');
-  }
-
-  async getMissedCardioDebtAmount() {
-    return await this.getNumericValue('missed_cardio_debt_amount');
-  }
-
-  async getWeeklyBaseAllowance() {
-    return await this.getNumericValue('weekly_base_allowance');
-  }
-
-  async getDebtInterestRate() {
-    return await this.getNumericValue('debt_interest_rate') / 100; // Convert percentage to decimal
-  }
-
-  async getWeeklyYogaMinimum() {
-    return await this.getNumericValue('weekly_yoga_minimum');
-  }
-
-  async getPerfectWeekBonus() {
-    return await this.getNumericValue('perfect_week_bonus');
-  }
-
-  async getJobApplicationsBonus() {
-    return await this.getNumericValue('job_applications_bonus');
-  }
-
-  async getJobApplicationsMinimum() {
-    return await this.getNumericValue('job_applications_minimum');
-  }
-
-  async getAlgoExpertBonus() {
-    return await this.getNumericValue('algoexpert_problems_bonus');
-  }
-
-  async getAlgoExpertMinimum() {
-    return await this.getNumericValue('algoexpert_problems_minimum');
-  }
-
-  async getReadingBonus() {
-    return await this.getNumericValue('reading_bonus');
-  }
-
-  async getDatingBonus() {
-    return await this.getNumericValue('dating_bonus');
-  }
-
-  async getOfficeAttendanceBonus() {
-    return await this.getNumericValue('office_attendance_bonus');
-  }
-
-  async getOfficeAttendanceMinimum() {
-    return await this.getNumericValue('office_attendance_minimum');
-  }
-}
-
-module.exports = new RulesService();)) {
+      if (baseValue.includes('$')) {
         // Handle money values
-        const baseAmount = parseFloat(baseValue.replace('
-
-  // Specific getter methods for commonly used values
-  async getLiftingBonus() {
-    return await this.getNumericValue('lifting_bonus_amount');
-  }
-
-  async getExtraYogaBonus() {
-    return await this.getNumericValue('extra_yoga_bonus_amount');
-  }
-
-  async getCardioPunishmentMinutes() {
-    return await this.getNumericValue('cardio_punishment_minutes');
-  }
-
-  async getMissedCardioDebtAmount() {
-    return await this.getNumericValue('missed_cardio_debt_amount');
-  }
-
-  async getWeeklyBaseAllowance() {
-    return await this.getNumericValue('weekly_base_allowance');
-  }
-
-  async getDebtInterestRate() {
-    return await this.getNumericValue('debt_interest_rate') / 100; // Convert percentage to decimal
-  }
-
-  async getWeeklyYogaMinimum() {
-    return await this.getNumericValue('weekly_yoga_minimum');
-  }
-
-  async getPerfectWeekBonus() {
-    return await this.getNumericValue('perfect_week_bonus');
-  }
-
-  async getJobApplicationsBonus() {
-    return await this.getNumericValue('job_applications_bonus');
-  }
-
-  async getJobApplicationsMinimum() {
-    return await this.getNumericValue('job_applications_minimum');
-  }
-
-  async getAlgoExpertBonus() {
-    return await this.getNumericValue('algoexpert_problems_bonus');
-  }
-
-  async getAlgoExpertMinimum() {
-    return await this.getNumericValue('algoexpert_problems_minimum');
-  }
-
-  async getReadingBonus() {
-    return await this.getNumericValue('reading_bonus');
-  }
-
-  async getDatingBonus() {
-    return await this.getNumericValue('dating_bonus');
-  }
-
-  async getOfficeAttendanceBonus() {
-    return await this.getNumericValue('office_attendance_bonus');
-  }
-
-  async getOfficeAttendanceMinimum() {
-    return await this.getNumericValue('office_attendance_minimum');
-  }
-}
-
-module.exports = new RulesService();, ''));
+        const baseAmount = parseFloat(baseValue.replace('$', ''));
         const newAmount = Math.round(baseAmount * (1 + modifier) * 100) / 100;
-        newCalculatedValue = `${newAmount}`;
+        newCalculatedValue = `$${newAmount}`;
       } else if (baseValue.includes('%')) {
         // Handle percentage values
         const basePercent = parseFloat(baseValue.replace('%', ''));
