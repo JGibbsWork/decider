@@ -12,11 +12,12 @@ class PunishmentService {
       const punishmentName = punishment.properties.Name.title[0]?.text?.content || 'Unnamed punishment';
       
       if (dateAssigned) {
-        // Check if punishment was due yesterday or earlier
+        // Check if punishment was assigned yesterday or earlier (overdue)
         const dueDate = parseISO(dateAssigned);
-        const isOverdue = isPast(dueDate) && format(dueDate, 'yyyy-MM-dd') !== currentDate;
+        const daysSinceAssigned = differenceInDays(new Date(currentDate), dueDate);
         
-        if (isOverdue) {
+        // Only mark as missed if it's been more than 1 day since assigned
+        if (daysSinceAssigned > 1) {
           // Mark as missed and create debt
           await notionService.updatePunishmentStatus(punishment.id, 'missed');
           
@@ -101,19 +102,35 @@ class PunishmentService {
   // Check for violations that should result in punishment
   async checkForViolations(date) {
     const violations = [];
+    const today = format(new Date(), 'yyyy-MM-dd');
+
+    // Only check for violations if we're processing today's reconciliation
+    if (date !== today) {
+      return violations;
+    }
 
     // Check for missed morning check-in
     const morningCheckin = await notionService.getMorningCheckin(date);
     if (!morningCheckin) {
-      violations.push({
-        type: 'missed_checkin',
-        reason: 'Missed morning check-in',
-        punishment_type: 'treadmill',
-        minutes: 20
+      // Check if we already assigned a punishment for missed check-in today
+      const existingPunishments = await notionService.getPendingPunishments();
+      const alreadyAssignedToday = existingPunishments.some(punishment => {
+        const assignedDate = punishment.properties['Date Assigned'].date?.start;
+        const punishmentName = punishment.properties.Name.title[0]?.text?.content || '';
+        return assignedDate === date && punishmentName.includes('check-in');
       });
+
+      if (!alreadyAssignedToday) {
+        violations.push({
+          type: 'missed_checkin',
+          reason: 'Missed morning check-in',
+          punishment_type: 'treadmill',
+          minutes: 20
+        });
+      }
     }
 
-    // Add other violation checks here:
+    // Add other violation checks here, but always check for duplicates first
     // - Skipped planned workout
     // - Late check-in (would need timestamp analysis)
     // etc.

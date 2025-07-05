@@ -6,28 +6,42 @@ class DebtService {
   async applyDailyInterest() {
     const activeDebts = await notionService.getActiveDebts();
     const updates = [];
+    const today = format(new Date(), 'yyyy-MM-dd');
 
     for (const debt of activeDebts) {
       const currentAmount = debt.properties['Current Amount'].number;
       const dateAssigned = debt.properties['Date Assigned '].date.start;
       const interestRate = debt.properties['Interest Rate'].number || 0.30;
       
-      // Calculate days since assigned (for interest calculation)
+      // Calculate days since assigned
       const daysSinceAssigned = differenceInDays(new Date(), new Date(dateAssigned));
       
-      // Apply compound interest: amount * (1 + rate)^days
-      const newAmount = Math.round(currentAmount * (1 + interestRate) * 100) / 100;
-      
-      if (newAmount !== currentAmount) {
-        await notionService.updateDebtAmount(debt.id, newAmount);
-        updates.push({
-          debt_id: debt.id,
-          name: debt.properties.Name.title[0]?.text?.content || 'Unnamed debt',
-          old_amount: currentAmount,
-          new_amount: newAmount,
-          reason: 'daily_interest',
-          days_outstanding: daysSinceAssigned
-        });
+      // Only apply interest if:
+      // 1. It's been at least 1 day since debt was assigned
+      // 2. Interest hasn't been applied today already
+      if (daysSinceAssigned >= 1) {
+        // Check if we've already applied interest today by looking for a property
+        // Since Notion doesn't have "last interest applied" field in your schema,
+        // we'll need to be smart about this. For now, let's only apply if the debt is more than 1 day old
+        // and we calculate what the amount SHOULD be vs what it IS
+        
+        const expectedAmount = Math.round(debt.properties['Original Amount'].number * Math.pow(1.30, daysSinceAssigned) * 100) / 100;
+        
+        // Only update if current amount is less than expected (meaning interest hasn't been applied today)
+        if (currentAmount < expectedAmount) {
+          // Apply just one day's worth of interest
+          const newAmount = Math.round(currentAmount * 1.30 * 100) / 100;
+          
+          await notionService.updateDebtAmount(debt.id, newAmount);
+          updates.push({
+            debt_id: debt.id,
+            name: debt.properties.Name.title[0]?.text?.content || 'Unnamed debt',
+            old_amount: currentAmount,
+            new_amount: newAmount,
+            reason: 'daily_interest',
+            days_outstanding: daysSinceAssigned
+          });
+        }
       }
     }
 

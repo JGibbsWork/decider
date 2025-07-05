@@ -113,6 +113,21 @@ class NotionService {
 
   // Create new debt contract
   async createDebt(debtData) {
+    // Check if similar debt already exists today
+    const existingDebts = await this.getActiveDebts();
+    const today = debtData.dateAssigned;
+    
+    const duplicateDebt = existingDebts.find(debt => {
+      const debtDate = debt.properties['Date Assigned '].date.start;
+      const debtName = debt.properties.Name.title[0]?.text?.content || '';
+      return debtDate === today && debtName.includes(debtData.name.split(':')[1]?.trim());
+    });
+
+    if (duplicateDebt) {
+      console.log(`Debt already exists for ${debtData.name} on ${today}`);
+      return duplicateDebt;
+    }
+
     const response = await notion.pages.create({
       parent: { database_id: DATABASES.DEBT_CONTRACTS },
       properties: {
