@@ -16,8 +16,14 @@ app.get('/health', (req, res) => {
 });
 
 // Main reconciliation endpoints
-app.post('/reconcile/daily', reconciliationController.runDailyReconciliation);
+app.post('/reconcile', reconciliationController.runReconciliation);
 app.post('/reconcile/weekly', reconciliationController.runWeeklyReconciliation);
+app.get('/reconcile/history', reconciliationController.getReconciliationHistory);
+
+// Rule modification endpoints
+app.get('/rules/status', reconciliationController.getRulesStatus);
+app.post('/rules/modify', reconciliationController.updateRuleModifier);
+app.post('/rules/reset', reconciliationController.resetRuleModifier);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

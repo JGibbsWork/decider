@@ -165,10 +165,269 @@ class RulesService {
     return financial;
   }
 
-  // Clear cache (useful for testing or manual refresh)
-  clearCache() {
-    this.cache.clear();
-    this.cacheExpiry.clear();
+  // Update rule modifier (for LLM dynamic adjustments)
+  async updateRuleModifier(ruleName, modifierPercent, reason = null) {
+    try {
+      const rules = await this.getAllRules();
+      const rule = rules[ruleName];
+      
+      if (!rule) {
+        throw new Error(`Rule ${ruleName} not found`);
+      }
+
+      // Find the rule page in Notion
+      const response = await notionService.notion.databases.query({
+        database_id: SYSTEM_RULES_DB,
+        filter: {
+          property: 'Rule Name',
+          title: {
+            equals: ruleName
+          }
+        }
+      });
+
+      if (response.results.length === 0) {
+        throw new Error(`Rule ${ruleName} not found in database`);
+      }
+
+      const rulePage = response.results[0];
+      const baseValue = rule.baseValue;
+      const modifier = modifierPercent / 100; // Convert percentage to decimal
+      
+      // Calculate new value
+      let newCalculatedValue;
+      if (baseValue.includes('
+
+  // Specific getter methods for commonly used values
+  async getLiftingBonus() {
+    return await this.getNumericValue('lifting_bonus_amount');
+  }
+
+  async getExtraYogaBonus() {
+    return await this.getNumericValue('extra_yoga_bonus_amount');
+  }
+
+  async getCardioPunishmentMinutes() {
+    return await this.getNumericValue('cardio_punishment_minutes');
+  }
+
+  async getMissedCardioDebtAmount() {
+    return await this.getNumericValue('missed_cardio_debt_amount');
+  }
+
+  async getWeeklyBaseAllowance() {
+    return await this.getNumericValue('weekly_base_allowance');
+  }
+
+  async getDebtInterestRate() {
+    return await this.getNumericValue('debt_interest_rate') / 100; // Convert percentage to decimal
+  }
+
+  async getWeeklyYogaMinimum() {
+    return await this.getNumericValue('weekly_yoga_minimum');
+  }
+
+  async getPerfectWeekBonus() {
+    return await this.getNumericValue('perfect_week_bonus');
+  }
+
+  async getJobApplicationsBonus() {
+    return await this.getNumericValue('job_applications_bonus');
+  }
+
+  async getJobApplicationsMinimum() {
+    return await this.getNumericValue('job_applications_minimum');
+  }
+
+  async getAlgoExpertBonus() {
+    return await this.getNumericValue('algoexpert_problems_bonus');
+  }
+
+  async getAlgoExpertMinimum() {
+    return await this.getNumericValue('algoexpert_problems_minimum');
+  }
+
+  async getReadingBonus() {
+    return await this.getNumericValue('reading_bonus');
+  }
+
+  async getDatingBonus() {
+    return await this.getNumericValue('dating_bonus');
+  }
+
+  async getOfficeAttendanceBonus() {
+    return await this.getNumericValue('office_attendance_bonus');
+  }
+
+  async getOfficeAttendanceMinimum() {
+    return await this.getNumericValue('office_attendance_minimum');
+  }
+}
+
+module.exports = new RulesService();)) {
+        // Handle money values
+        const baseAmount = parseFloat(baseValue.replace('
+
+  // Specific getter methods for commonly used values
+  async getLiftingBonus() {
+    return await this.getNumericValue('lifting_bonus_amount');
+  }
+
+  async getExtraYogaBonus() {
+    return await this.getNumericValue('extra_yoga_bonus_amount');
+  }
+
+  async getCardioPunishmentMinutes() {
+    return await this.getNumericValue('cardio_punishment_minutes');
+  }
+
+  async getMissedCardioDebtAmount() {
+    return await this.getNumericValue('missed_cardio_debt_amount');
+  }
+
+  async getWeeklyBaseAllowance() {
+    return await this.getNumericValue('weekly_base_allowance');
+  }
+
+  async getDebtInterestRate() {
+    return await this.getNumericValue('debt_interest_rate') / 100; // Convert percentage to decimal
+  }
+
+  async getWeeklyYogaMinimum() {
+    return await this.getNumericValue('weekly_yoga_minimum');
+  }
+
+  async getPerfectWeekBonus() {
+    return await this.getNumericValue('perfect_week_bonus');
+  }
+
+  async getJobApplicationsBonus() {
+    return await this.getNumericValue('job_applications_bonus');
+  }
+
+  async getJobApplicationsMinimum() {
+    return await this.getNumericValue('job_applications_minimum');
+  }
+
+  async getAlgoExpertBonus() {
+    return await this.getNumericValue('algoexpert_problems_bonus');
+  }
+
+  async getAlgoExpertMinimum() {
+    return await this.getNumericValue('algoexpert_problems_minimum');
+  }
+
+  async getReadingBonus() {
+    return await this.getNumericValue('reading_bonus');
+  }
+
+  async getDatingBonus() {
+    return await this.getNumericValue('dating_bonus');
+  }
+
+  async getOfficeAttendanceBonus() {
+    return await this.getNumericValue('office_attendance_bonus');
+  }
+
+  async getOfficeAttendanceMinimum() {
+    return await this.getNumericValue('office_attendance_minimum');
+  }
+}
+
+module.exports = new RulesService();, ''));
+        const newAmount = Math.round(baseAmount * (1 + modifier) * 100) / 100;
+        newCalculatedValue = `${newAmount}`;
+      } else if (baseValue.includes('%')) {
+        // Handle percentage values
+        const basePercent = parseFloat(baseValue.replace('%', ''));
+        const newPercent = Math.round(basePercent * (1 + modifier) * 100) / 100;
+        newCalculatedValue = `${newPercent}%`;
+      } else {
+        // Handle numeric values
+        const baseNum = parseFloat(baseValue);
+        const newNum = Math.round(baseNum * (1 + modifier));
+        newCalculatedValue = newNum.toString();
+      }
+
+      // Update the rule in Notion
+      await notionService.notion.pages.update({
+        page_id: rulePage.id,
+        properties: {
+          'Current Modifier': {
+            rich_text: [{ text: { content: `${modifierPercent}%` } }]
+          },
+          'Calculated Value': {
+            rich_text: [{ text: { content: newCalculatedValue } }]
+          },
+          'Modified Date': {
+            date: { start: format(new Date(), 'yyyy-MM-dd') }
+          }
+        }
+      });
+
+      // Clear cache to force refresh
+      this.clearCache();
+
+      return {
+        rule_name: ruleName,
+        base_value: baseValue,
+        modifier_percent: modifierPercent,
+        new_calculated_value: newCalculatedValue,
+        reason: reason,
+        updated_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
+      };
+
+    } catch (error) {
+      console.error('Error updating rule modifier:', error);
+      throw error;
+    }
+  }
+
+  // Reset rule modifier back to base value
+  async resetRuleModifier(ruleName) {
+    return await this.updateRuleModifier(ruleName, 0, 'Reset to base value');
+  }
+
+  // Get all modified rules (rules with non-zero modifiers)
+  async getModifiedRules() {
+    const rules = await this.getAllRules();
+    const modified = {};
+    
+    for (const [key, rule] of Object.entries(rules)) {
+      const modifier = rule.modifier || '0%';
+      if (modifier !== '0%' && modifier !== '0') {
+        modified[key] = {
+          ...rule,
+          modifier_percent: parseFloat(modifier.replace('%', '')) || 0
+        };
+      }
+    }
+    
+    return modified;
+  }
+
+  // Bulk update multiple rules (for complex LLM adjustments)
+  async updateMultipleRules(ruleUpdates) {
+    const results = [];
+    
+    for (const update of ruleUpdates) {
+      try {
+        const result = await this.updateRuleModifier(
+          update.rule_name, 
+          update.modifier_percent, 
+          update.reason
+        );
+        results.push({ success: true, ...result });
+      } catch (error) {
+        results.push({ 
+          success: false, 
+          rule_name: update.rule_name, 
+          error: error.message 
+        });
+      }
+    }
+    
+    return results;
   }
 
   // Specific getter methods for commonly used values

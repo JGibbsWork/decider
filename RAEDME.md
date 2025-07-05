@@ -58,8 +58,95 @@ Runs the complete daily reconciliation process.
     "uber_earnings_processed": 25,
     "total_bonus_amount": 15,
     "summary": "Today's bonuses total $15. Your $25 Uber earnings paid debt."
+### GET /reconcile/history
+Gets historical reconciliation data for pattern analysis.
+
+**Query Parameters:**
+- `type`: "daily" or "weekly" (default: "daily") 
+- `days`: Number of days for daily history (default: 30)
+- `weeks`: Number of weeks for weekly history (default: 12)
+
+**Example:**
+```bash
+GET /reconcile/history?type=daily&days=14
+GET /reconcile/history?type=weekly&weeks=8
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "type": "daily", 
+  "history": {
+    "period": { "start": "2025-06-10", "end": "2025-07-05", "days": 30 },
+    "summary": {
+      "total_bonuses": 250,
+      "average_daily_bonuses": 8.33,
+      "total_punishments": 5,
+      "punishment_completion_rate": 80,
+      "workout_breakdown": { "Yoga": 12, "Lifting": 8, "Cardio": 3 },
+      "best_day": "2025-06-25",
+      "worst_day": "2025-06-30"
+    },
+    "daily_breakdown": [...]
   }
 }
+```
+
+### GET /rules/status
+Shows current system rules and any LLM modifications.
+
+**Response:**
+```json
+{
+  "success": true,
+  "all_rules": {...},
+  "modified_rules": {
+    "lifting_bonus_amount": {
+      "base_value": "$10",
+      "calculated_value": "$12", 
+      "modifier_percent": 20
+    }
+  },
+  "modification_count": 1
+}
+```
+
+### POST /rules/modify
+Allows LLM to adjust rule values dynamically.
+
+**Request Body:**
+```json
+{
+  "rule_name": "lifting_bonus_amount",
+  "modifier_percent": 20,
+  "reason": "User struggling with consistency, increasing carrot"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": {
+    "rule_name": "lifting_bonus_amount",
+    "base_value": "$10",
+    "modifier_percent": 20,
+    "new_calculated_value": "$12",
+    "reason": "User struggling with consistency, increasing carrot"
+  }
+}
+```
+
+### POST /rules/reset
+Resets a rule back to its base value.
+
+**Request Body:**
+```json
+{
+  "rule_name": "lifting_bonus_amount"
+}
+```
 ```
 
 ### POST /reconcile/weekly
