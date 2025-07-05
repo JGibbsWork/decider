@@ -233,6 +233,21 @@ class HabiticaService {
 
     return results;
   }
+  
+  // Get all user's todos
+  async getTodos() {
+    try {
+      const response = await axios.get(
+        `${this.apiUrl}/tasks/user?type=todos`,
+        { headers: this.headers }
+      );
+
+      return response.data.data;
+    } catch (error) {
+      console.error('Failed to get Habitica todos:', error.response?.data || error.message);
+      return [];
+    }
+  }
 }
 
 module.exports = new HabiticaService();
