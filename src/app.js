@@ -15,8 +15,9 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Main reconciliation endpoint
-app.post('/reconcile', reconciliationController.runReconciliation);
+// Main reconciliation endpoints
+app.post('/reconcile/daily', reconciliationController.runDailyReconciliation);
+app.post('/reconcile/weekly', reconciliationController.runWeeklyReconciliation);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

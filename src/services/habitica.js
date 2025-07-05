@@ -181,17 +181,54 @@ class HabiticaService {
     return results;
   }
 
-  // Batch score multiple habits (for weekly reconciliation)
-  async scoreMultipleHabits(habitScores) {
+  // Reset habit counters for weekly tracking (call at start of new week)
+  async resetWeeklyHabitCounters() {
+    try {
+      const habits = await this.getHabits();
+      const weeklyHabits = habits.filter(habit => 
+        habit.text.includes('Weekly') && 
+        (habit.text.includes('Job Applications') || 
+         habit.text.includes('Office Attendance') || 
+         habit.text.includes('AlgoExpert'))
+      );
+
+      const results = [];
+      for (const habit of weeklyHabits) {
+        // Reset counter by updating the habit
+        const response = await axios.put(
+          `${this.apiUrl}/tasks/${habit.id}`,
+          { 
+            counterUp: 0,
+            counterDown: 0
+          },
+          { headers: this.headers }
+        );
+
+        results.push({
+          habitId: habit.id,
+          habitName: habit.text,
+          success: true,
+          previousCount: habit.counterUp || 0
+        });
+      }
+
+      return results;
+    } catch (error) {
+      console.error('Failed to reset weekly habit counters:', error);
+      return [];
+    }
+  }
+
+  // Score a habit multiple times (for bulk weekly updates)
+  async scoreHabitMultipleTimes(habitId, times, direction = 'up') {
     const results = [];
     
-    for (const score of habitScores) {
-      const result = await this.scoreHabit(score.habitId, score.direction);
-      results.push({
-        habitId: score.habitId,
-        habitName: score.habitName,
-        ...result
-      });
+    for (let i = 0; i < times; i++) {
+      const result = await this.scoreHabit(habitId, direction);
+      results.push(result);
+      
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     return results;

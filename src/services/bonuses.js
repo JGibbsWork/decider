@@ -64,7 +64,7 @@ class BonusService {
     };
   }
 
-  // Create base weekly allowance bonus
+  // Create base weekly allowance bonus (called on Sundays or manually)
   async createWeeklyAllowance(date) {
     const weekOf = format(startOfWeek(new Date(date)), 'yyyy-MM-dd');
     const allowanceAmount = await rulesService.getWeeklyBaseAllowance();
@@ -76,6 +76,49 @@ class BonusService {
       weekOf: weekOf,
       reason: 'Weekly base allowance'
     };
+  }
+
+  // Check if base allowance has already been awarded for this week
+  async isWeeklyAllowanceAwarded(weekStart) {
+    try {
+      const response = await notionService.notion.databases.query({
+        database_id: '227e3d1e-e83a-80a4-949b-c62e6fc0c1d0', // BONUSES database
+        filter: {
+          and: [
+            {
+              property: 'Week Of',
+              date: {
+                equals: weekStart
+              }
+            },
+            {
+              property: 'Bonus Type',
+              select: {
+                equals: 'Base Allowance'
+              }
+            }
+          ]
+        }
+      });
+
+      return response.results.length > 0;
+    } catch (error) {
+      console.error('Error checking weekly allowance:', error);
+      return false;
+    }
+  }
+
+  // Award weekly base allowance if not already done
+  async awardWeeklyAllowanceIfNeeded(weekStart) {
+    const alreadyAwarded = await this.isWeeklyAllowanceAwarded(weekStart);
+    
+    if (!alreadyAwarded) {
+      const allowanceBonus = await this.createWeeklyAllowance(weekStart);
+      const awarded = await this.awardBonuses([allowanceBonus]);
+      return awarded[0];
+    }
+    
+    return null;
   }
 
   // Create discretionary "good boy" bonus
