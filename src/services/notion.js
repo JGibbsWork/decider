@@ -11,10 +11,14 @@ const DATABASES = {
   BALANCES: '227e3d1e-e83a-8098-b2f0-f0652bf21e24',
   DEBT_CONTRACTS: '227e3d1e-e83a-80b9-b1c3-ef4e6aafcc3e',
   PUNISHMENTS: '227e3d1e-e83a-8065-8d2e-f64bed599adf',
-  MORNING_CHECKINS: '223e3d1e-e83a-808c-b94f-d2901d63b1cb'
+  MORNING_CHECKINS: '223e3d1e-e83a-808c-b94f-d2901d63b1cb',
+  SYSTEM_RULES: '227e3d1e-e83a-80e7-9019-e183a59667d8'
 };
 
 class NotionService {
+  constructor() {
+    this.notion = notion;
+  }
   // Get today's workouts
   async getTodaysWorkouts(date) {
     const response = await notion.databases.query({
@@ -156,25 +160,34 @@ class NotionService {
 
   // Create new punishment assignment
   async createPunishment(punishmentData) {
+    const properties = {
+      Name: {
+        title: [{ text: { content: punishmentData.name } }]
+      },
+      Type: {
+        select: { name: punishmentData.type }
+      },
+      'Minutes Required': {
+        number: punishmentData.minutes
+      },
+      'Date Assigned': {
+        date: { start: punishmentData.dateAssigned }
+      },
+      Status: {
+        select: { name: 'pending' }
+      }
+    };
+
+    // Add Due Date if provided
+    if (punishmentData.dueDate) {
+      properties['Due Date'] = {
+        date: { start: punishmentData.dueDate }
+      };
+    }
+
     const response = await notion.pages.create({
       parent: { database_id: DATABASES.PUNISHMENTS },
-      properties: {
-        Name: {
-          title: [{ text: { content: punishmentData.name } }]
-        },
-        Type: {
-          select: { name: punishmentData.type }
-        },
-        'Minutes Required': {
-          number: punishmentData.minutes
-        },
-        'Date Assigned': {
-          date: { start: punishmentData.dateAssigned }
-        },
-        Status: {
-          select: { name: 'pending' }
-        }
-      }
+      properties
     });
     return response;
   }

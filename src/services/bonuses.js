@@ -1,43 +1,49 @@
 const { format, startOfWeek } = require('date-fns');
 const notionService = require('./notion');
+const rulesService = require('./rules');
 
 class BonusService {
-  // Check for workout bonuses earned today
+  // Check for workout bonuses earned today (per occurrence bonuses)
   async checkWorkoutBonuses(date) {
     const workouts = await notionService.getTodaysWorkouts(date);
     const bonuses = [];
+    const weekOf = format(startOfWeek(new Date(date)), 'yyyy-MM-dd');
 
+    // Get per occurrence bonus rules
+    const perOccurrenceRules = await rulesService.getPerOccurrenceRules();
+    
     for (const workout of workouts) {
       const workoutType = workout.properties['Workout Type'].select?.name;
-      const weekOf = format(startOfWeek(new Date(date)), 'yyyy-MM-dd');
 
       switch (workoutType) {
         case 'Lifting':
-          bonuses.push({
-            type: 'Lifting',
-            amount: 10,
-            name: `Lifting Session - ${date}`,
-            weekOf: weekOf,
-            reason: 'Completed lifting workout'
-          });
+          if (perOccurrenceRules['lifting_bonus_amount']) {
+            const amount = await rulesService.getNumericValue('lifting_bonus_amount');
+            bonuses.push({
+              type: 'Lifting',
+              amount: amount,
+              name: `Lifting Session - ${date}`,
+              weekOf: weekOf,
+              reason: 'Completed lifting workout'
+            });
+          }
           break;
         
         case 'Yoga':
-          // Check if this is extra yoga (beyond 3/week baseline)
-          // For now, we'll award for all yoga and let weekly reconciliation handle baseline
-          bonuses.push({
-            type: 'Yoga',
-            amount: 5,
-            name: `Yoga Session - ${date}`,
-            weekOf: weekOf,
-            reason: 'Completed yoga session'
-          });
+          if (perOccurrenceRules['extra_yoga_bonus_amount']) {
+            const amount = await rulesService.getNumericValue('extra_yoga_bonus_amount');
+            bonuses.push({
+              type: 'Yoga',
+              amount: amount,
+              name: `Yoga Session - ${date}`,
+              weekOf: weekOf,
+              reason: 'Completed yoga session'
+            });
+          }
           break;
         
-        // Cardio doesn't earn bonuses unless it's punishment completion
         case 'Cardio':
-          // Check if this was completing a punishment assignment
-          // This would require cross-referencing with punishments database
+          // Cardio doesn't earn bonuses unless it's punishment completion
           break;
       }
     }
@@ -54,17 +60,18 @@ class BonusService {
       amount: uberEarnings,
       name: `Uber Earnings Match - ${date}`,
       weekOf: weekOf,
-      reason: `Earned $${uberEarnings} in Uber deliveries`
+      reason: `Earned ${uberEarnings} in Uber deliveries`
     };
   }
 
   // Create base weekly allowance bonus
   async createWeeklyAllowance(date) {
     const weekOf = format(startOfWeek(new Date(date)), 'yyyy-MM-dd');
+    const allowanceAmount = await rulesService.getWeeklyBaseAllowance();
     
     return {
       type: 'Base Allowance',
-      amount: 50,
+      amount: allowanceAmount,
       name: `Weekly Allowance - Week of ${weekOf}`,
       weekOf: weekOf,
       reason: 'Weekly base allowance'
@@ -113,16 +120,61 @@ class BonusService {
 
   // Check for weekly performance bonuses (end of week)
   async checkWeeklyBonuses(weekStart) {
-    // This would check for:
-    // - Perfect Week (3 yoga + 3 lifting): $50
-    // - Job Applications (25+): $50  
-    // - AlgoExpert (7 problems): $25
-    // - Reading (finished book): $25
-    // - Dating (actual date): $30
+    const bonuses = [];
     
-    // For now, returning empty array - this would need additional data sources
-    // like job applications database, AlgoExpert tracking, etc.
-    return [];
+    // Get weekly bonus rules
+    const weeklyRules = await rulesService.getWeeklyRules();
+    const weeklyExpectations = {};
+    
+    // Separate bonus rules from expectation rules
+    for (const [key, rule] of Object.entries(weeklyRules)) {
+      if (rule.type === 'expectation') {
+        weeklyExpectations[key] = rule;
+      }
+    }
+
+    // Check each weekly bonus against its corresponding expectation
+    if (weeklyRules['perfect_week_bonus']) {
+      // TODO: Check if 3 yoga + 3 lifting completed this week
+      // const perfectWeekMet = await this.checkPerfectWeek(weekStart);
+      // if (perfectWeekMet) { bonuses.push(...) }
+    }
+
+    if (weeklyRules['job_applications_bonus'] && weeklyExpectations['job_applications_minimum']) {
+      // TODO: Check job applications from Habitica or external source
+      // const jobAppsCount = await this.getJobApplicationsCount(weekStart);
+      // const minimum = await rulesService.getNumericValue('job_applications_minimum');
+      // if (jobAppsCount >= minimum) { bonuses.push(...) }
+    }
+
+    if (weeklyRules['algoexpert_problems_bonus'] && weeklyExpectations['algoexpert_problems_minimum']) {
+      // TODO: Check AlgoExpert progress from Habitica
+      // const problemsCount = await this.getAlgoExpertProblemsCount(weekStart);
+      // const minimum = await rulesService.getNumericValue('algoexpert_problems_minimum');
+      // if (problemsCount >= minimum) { bonuses.push(...) }
+    }
+
+    if (weeklyRules['office_attendance_bonus'] && weeklyExpectations['office_attendance_minimum']) {
+      // TODO: Check office attendance from Habitica
+      // const daysCount = await this.getOfficeAttendanceCount(weekStart);
+      // const minimum = await rulesService.getNumericValue('office_attendance_minimum');
+      // if (daysCount >= minimum) { bonuses.push(...) }
+    }
+
+    // Per occurrence bonuses that are weekly tracked
+    if (weeklyRules['reading_bonus']) {
+      // TODO: Check for completed books this week
+      // const booksCompleted = await this.getBooksCompletedCount(weekStart);
+      // for each book, add reading bonus
+    }
+
+    if (weeklyRules['dating_bonus']) {
+      // TODO: Check for dates attended this week
+      // const datesCount = await this.getDatesCount(weekStart);
+      // for each date, add dating bonus
+    }
+
+    return bonuses;
   }
 }
 
