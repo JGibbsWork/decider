@@ -114,6 +114,60 @@ class NotionService {
     });
     return response;
   }
+  
+  async getDebtById(debtId) {
+  try {
+    const response = await notion.pages.retrieve({
+      page_id: debtId
+    });
+    
+    // Check if this is actually a debt (from debt contracts database)
+    if (response.parent.database_id === DATABASES.DEBT_CONTRACTS) {
+      return response;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting debt by ID:', error);
+    return null;
+  }
+}
+
+// Get debts for a date period (move from history service to notion service)
+async getDebtsForPeriod(startDate, endDate) {
+  try {
+    const response = await notion.databases.query({
+      database_id: DATABASES.DEBT_CONTRACTS,
+      filter: {
+        and: [
+          {
+            property: 'Date Assigned ',
+            date: {
+              on_or_after: startDate
+            }
+          },
+          {
+            property: 'Date Assigned ',
+            date: {
+              on_or_before: endDate
+            }
+          }
+        ]
+      },
+      sorts: [
+        {
+          property: 'Date Assigned ',
+          direction: 'ascending'
+        }
+      ]
+    });
+
+    return response.results;
+  } catch (error) {
+    console.error('Error getting debts for period:', error);
+    return [];
+  }
+}
 
   // Create new debt contract
   async createDebt(debtData) {

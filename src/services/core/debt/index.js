@@ -1,7 +1,5 @@
-// src/services/core/debt/index.js
-
 const { format, differenceInDays } = require('date-fns');
-const notionClient = require('../../integrations/notion');
+const notionService = require('../../integrations/notion');
 
 class DebtService {
   
