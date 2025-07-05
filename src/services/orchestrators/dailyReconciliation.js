@@ -4,9 +4,8 @@ const { format } = require('date-fns');
 const punishmentService = require('../core/punishments');
 const bonusService = require('../core/bonuses');
 const workoutService = require('../core/workouts');
-
-// Import legacy services (for now - can be converted later)
-const financialProcessor = require('../processors/financialProcessor');
+const debtService = require('../core/debt');
+const notionService = require('../notion');
 
 class DailyReconciliationOrchestrator {
 
@@ -46,28 +45,25 @@ class DailyReconciliationOrchestrator {
       results.workouts.bonus_eligible = await workoutService.getWorkoutsEligibleForBonus(today);
       console.log(`Found ${results.workouts.todays_workouts.length} workouts, ${results.workouts.bonus_eligible.length} eligible for bonus`);
 
-      // Step 2: Process financial rules (debt interest)
+      // Step 2: Process daily financial rules (debt interest) - DIRECT IMPLEMENTATION
       console.log('💰 Processing financial rules...');
-      results.financial.debt_updates = await financialProcessor.processDailyFinancialRules();
+      results.financial.debt_updates = await this.processDailyFinancialRules();
 
       // Step 3: Process all punishment workflows
       console.log('⚖️ Processing punishments...');
       const punishmentResults = await this.processPunishments(today);
       results.punishments = punishmentResults;
 
-      // Step 4: Process Uber earnings and debt payments
+      // Step 4: Process Uber earnings and debt payments - DIRECT IMPLEMENTATION
       console.log('🚗 Processing Uber earnings...');
-      const uberResults = await financialProcessor.processUberEarnings();
+      const uberResults = await this.processUberEarnings();
       results.financial.uber_earnings = uberResults.earnings;
       results.financial.debt_payments = uberResults.payments;
       results.financial.match_bonus = uberResults.matchBonus;
 
       // Step 5: Process daily bonuses
       console.log('🎁 Processing bonuses...');
-      const bonusResults = await bonusService.processDailyBonuses(
-        today, 
-        uberResults.remaining // Only create match bonus if debt-free
-      );
+      const bonusResults = await this.processDailyBonuses(today, results.workouts.bonus_eligible, uberResults.remaining);
       results.bonuses = bonusResults;
 
       // Step 6: Generate summary
@@ -84,6 +80,98 @@ class DailyReconciliationOrchestrator {
     }
   }
 
+  // DIRECT FINANCIAL IMPLEMENTATION (no processor dependency)
+  async processDailyFinancialRules() {
+    try {
+      console.log('Applying daily interest to debts...');
+      
+      const activeDebts = await notionService.getActiveDebts();
+      const debtUpdates = [];
+
+      for (const debt of activeDebts) {
+        const currentAmount = debt.properties['Current Amount'].number || 0;
+        const interestRate = debt.properties['Interest Rate'].number || 0.30; // 30% default
+        
+        const newAmount = currentAmount * (1 + interestRate);
+        
+        // Update debt in Notion
+        await debtService.updateDebtAmount(debt.id, newAmount);
+        
+        debtUpdates.push({
+          debt_id: debt.id,
+          old_amount: currentAmount,
+          new_amount: newAmount,
+          interest_applied: newAmount - currentAmount
+        });
+        
+        console.log(`Applied ${interestRate * 100}% interest: $${currentAmount} → $${newAmount.toFixed(2)}`);
+      }
+
+      return debtUpdates;
+
+    } catch (error) {
+      console.error('Error processing daily financial rules:', error);
+      return [];
+    }
+  }
+
+  // DIRECT UBER EARNINGS IMPLEMENTATION (no processor dependency)
+  async processUberEarnings() {
+    try {
+      const balances = await notionService.getLatestBalances(2);
+      
+      if (balances.length < 2) {
+        console.log('Insufficient balance history for Uber earnings calculation');
+        return { earnings: 0, payments: [], remaining: 0, matchBonus: null };
+      }
+
+      const [today, yesterday] = balances;
+      const uberEarnings = (today.properties['Account B Balance'].number || 0) - 
+                          (yesterday.properties['Account B Balance'].number || 0);
+
+      if (uberEarnings <= 0) {
+        console.log('No Uber earnings today');
+        return { earnings: 0, payments: [], remaining: 0, matchBonus: null };
+      }
+
+      console.log(`Found $${uberEarnings} in Uber earnings`);
+
+      // Check if there's active debt
+      const activeDebts = await notionService.getActiveDebts();
+      
+      if (activeDebts.length > 0) {
+        // Pay toward debt (oldest first)
+        console.log('Active debt found, applying earnings to debt...');
+        const payments = await debtService.applyEarningsToDebt(uberEarnings, activeDebts);
+        
+        return {
+          earnings: uberEarnings,
+          payments: payments,
+          remaining: 0, // All goes to debt
+          matchBonus: null
+        };
+      } else {
+        // Debt-free: earnings stay, can create match bonus
+        console.log('Debt-free! Uber earnings available for matching.');
+        
+        return {
+          earnings: uberEarnings,
+          payments: [],
+          remaining: uberEarnings,
+          matchBonus: {
+            type: 'uber_match',
+            amount: uberEarnings,
+            description: `Uber Eats match bonus: $${uberEarnings}`
+          }
+        };
+      }
+
+    } catch (error) {
+      console.error('Error processing Uber earnings:', error);
+      return { earnings: 0, payments: [], remaining: 0, matchBonus: null };
+    }
+  }
+
   async processPunishments(date) {
     try {
       const results = {
@@ -96,16 +184,16 @@ class DailyReconciliationOrchestrator {
       // Process overdue punishments
       results.overdue_processed = await punishmentService.processOverduePunishments(date);
       
-      // Check punishment completions
-      results.completions = await punishmentService.processCompletions(date);
-      
-      // Process new violations
-      results.new_violations = await punishmentService.processNewViolations(date);
-
-      // Calculate total debt created
+      // Calculate debt created from overdue
       results.debt_created = results.overdue_processed.reduce((sum, overdue) => {
         return sum + (overdue.debt_amount || 0);
       }, 0);
+
+      // Check completions
+      results.completions = await punishmentService.processCompletions(date);
+
+      // Process new violations
+      results.new_violations = await punishmentService.processNewViolations(date);
 
       console.log(`Punishment processing: ${results.overdue_processed.length} overdue, ${results.completions.length} completed, ${results.new_violations.length} new`);
 
@@ -114,6 +202,48 @@ class DailyReconciliationOrchestrator {
     } catch (error) {
       console.error('Error in punishment processing:', error);
       throw error;
+    }
+  }
+
+  async processDailyBonuses(date, workoutsEligible, uberEarnings = 0) {
+    try {
+      const allBonuses = [];
+      
+      // Workout bonuses (per occurrence)
+      for (const workout of workoutsEligible) {
+        const bonus = await bonusService.createWorkoutBonus(workout, date);
+        if (bonus) allBonuses.push(bonus);
+      }
+
+      // Uber match bonus (if debt-free and has earnings)
+      if (uberEarnings > 0) {
+        const uberMatchBonus = await bonusService.createUberMatchBonus(uberEarnings, date);
+        if (uberMatchBonus) {
+          allBonuses.push(uberMatchBonus);
+          console.log(`Created Uber match bonus: $${uberEarnings}`);
+        }
+      }
+
+      // Award all bonuses
+      if (allBonuses.length > 0) {
+        const awardedBonuses = await bonusService.awardBonuses(allBonuses);
+        const totalAmount = awardedBonuses.reduce((sum, bonus) => sum + bonus.amount, 0);
+        
+        console.log(`Awarded ${awardedBonuses.length} bonuses totaling $${totalAmount}`);
+        return {
+          bonuses_awarded: awardedBonuses,
+          total_amount: totalAmount
+        };
+      }
+
+      return {
+        bonuses_awarded: [],
+        total_amount: 0
+      };
+
+    } catch (error) {
+      console.error('Error processing daily bonuses:', error);
+      return { bonuses_awarded: [], total_amount: 0 };
     }
   }
 
@@ -176,10 +306,10 @@ class DailyReconciliationOrchestrator {
       
       const status = {
         date: targetDate,
-        financial: await financialProcessor.getFinancialSummary(targetDate),
+        financial: await this.getFinancialSummary(targetDate),
         punishments: await this.getPunishmentSummary(targetDate),
         bonuses: await this.getBonusSummary(targetDate),
-        workouts: await this.getWorkoutSummary(targetDate)
+        last_reconciliation: null
       };
 
       return status;
@@ -190,37 +320,38 @@ class DailyReconciliationOrchestrator {
     }
   }
 
-  async getPunishmentSummary(date) {
-    const pending = await punishmentService.getPendingPunishments();
-    const completedToday = await punishmentService.processCompletions(date);
-
+  async getFinancialSummary(date) {
+    const activeDebts = await notionService.getActiveDebts();
+    const totalDebt = activeDebts.reduce((sum, debt) => 
+      sum + (debt.properties['Current Amount'].number || 0), 0
+    );
+    
     return {
-      pending_count: pending.length,
-      completed_today: completedToday.length,
-      total_pending_minutes: pending.reduce((sum, p) => sum + (p.minutes || 0), 0)
+      total_debt: totalDebt,
+      active_contracts: activeDebts.length,
+      debt_free: activeDebts.length === 0
+    };
+  }
+
+  async getPunishmentSummary(date) {
+    const pendingPunishments = await notionService.getPendingPunishments();
+    
+    return {
+      pending_count: pendingPunishments.length,
+      total_minutes: pendingPunishments.reduce((sum, p) => 
+        sum + (p.properties['Minutes'].number || 0), 0
+      )
     };
   }
 
   async getBonusSummary(date) {
-    // This could be implemented in the bonus service
+    // This would need implementation based on your bonus tracking
     return {
-      earned_today: 0,
-      workout_bonuses: 0,
+      todays_bonuses: 0,
       total_amount: 0
     };
   }
 
-  async getWorkoutSummary(date) {
-    const workouts = await workoutService.getTodaysWorkouts(date);
-    const streak = await workoutService.getCurrentWorkoutStreak(date);
-
-    return {
-      todays_count: workouts.length,
-      types_completed: [...new Set(workouts.map(w => w.type))],
-      current_streak: streak.current_streak,
-      bonus_eligible: workouts.filter(w => w.isValidForBonus()).length
-    };
-  }
 }
 
 module.exports = new DailyReconciliationOrchestrator();

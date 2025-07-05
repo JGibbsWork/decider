@@ -1,5 +1,5 @@
 const { format } = require('date-fns');
-const dailyReconciliationService = require('../services/dailyReconciliation');
+const dailyReconciliationOrchestrator = require('../services/orchestrators/dailyReconciliation');
 const weeklyReconciliationService = require('../services/weeklyReconciliation');
 const historyService = require('../services/history');
 const rulesService = require('../services/rules');
