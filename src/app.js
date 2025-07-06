@@ -7,7 +7,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*'
+}));
+app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
 // Health check endpoint
@@ -39,8 +42,38 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Decider service running on port ${PORT}`);
+// Health check endpoint for Docker
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    service: 'decider',
+    environment: process.env.NODE_ENV || 'development',
+    uptime: process.uptime()
+  });
+});
+
+// Status endpoint for monitoring
+app.get('/status', (req, res) => {
+  res.json({
+    service: 'decider',
+    status: 'running',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    notion: {
+      configured: !!process.env.NOTION_API_KEY,
+      database: !!process.env.NOTION_DATABASE_ID
+    },
+    environment: process.env.NODE_ENV || 'development',
+    port: process.env.PORT || 3005
+  });
+});
+
+// Start server
+const port = process.env.PORT || 3005;
+app.listen(port, () => {
+  console.log(`🧠 Decider running on port ${port}`);
+  console.log(`🔗 Notion integration: ${process.env.NOTION_API_KEY ? 'configured' : 'not configured'}`);
 });
 
 module.exports = app;

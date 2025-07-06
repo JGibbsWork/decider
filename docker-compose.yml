@@ -1,0 +1,31 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: decider-production
+    ports:
+      - "3005:3005"
+    environment:
+      - NODE_ENV=production
+      - PORT=3005
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - gibbs-apps
+    volumes:
+      - ./logs:/usr/src/app/logs:rw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "app=decider"
+      - "environment=production"
+
+networks:
+  gibbs-apps:
+    external: true
