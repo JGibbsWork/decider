@@ -1,5 +1,6 @@
 const workoutRepo = require('./repository/WorkoutRepository');
 const workoutAnalyzer = require('./services/WorkoutAnalyzer');
+const stravaService = require('../../integrations/strava');
 
 class WorkoutService {
 
@@ -87,6 +88,32 @@ class WorkoutService {
       days_to_milestone: nextMilestone ? nextMilestone - streak.current_streak : null,
       recently_achieved: milestones.includes(streak.current_streak)
     };
+  }
+
+  // Strava specific methods
+  async getStravaStatus() {
+    if (!stravaService.isConfigured()) {
+      return { configured: false, connected: false };
+    }
+    
+    const testResult = await stravaService.testConnection();
+    return {
+      configured: true,
+      ...testResult
+    };
+  }
+
+  async getTodaysStravaWorkouts() {
+    if (!stravaService.isConfigured()) {
+      return [];
+    }
+    
+    try {
+      return await stravaService.getTodaysActivities();
+    } catch (error) {
+      console.error('Failed to fetch today\'s Strava workouts:', error.message);
+      return [];
+    }
   }
 }
 

@@ -292,6 +292,78 @@ async getDebtsForPeriod(startDate, endDate) {
     });
     return response;
   }
+
+  // Health check method
+  async healthCheck() {
+    try {
+      // Test connection by trying to retrieve a database
+      const response = await notion.databases.retrieve({
+        database_id: DATABASES.WORKOUTS
+      });
+      
+      return {
+        status: 'healthy',
+        connected: true,
+        database_access: true,
+        workspace_title: response.title?.[0]?.plain_text || 'Unknown'
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        connected: false,
+        database_access: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Get system rules
+  async getSystemRules() {
+    try {
+      const response = await notion.databases.query({
+        database_id: DATABASES.SYSTEM_RULES
+      });
+      return response.results;
+    } catch (error) {
+      console.error('Error getting system rules:', error);
+      return [];
+    }
+  }
+
+  // Update rule modifier
+  async updateRuleModifier(ruleId, modifierValue) {
+    try {
+      const response = await notion.pages.update({
+        page_id: ruleId,
+        properties: {
+          'Modifier': {
+            number: modifierValue
+          }
+        }
+      });
+      return response;
+    } catch (error) {
+      console.error('Error updating rule modifier:', error);
+      throw error;
+    }
+  }
+
+  // Get reconciliation history
+  async getReconciliationHistory(days = 7) {
+    try {
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      
+      // This would need to be implemented based on where you store reconciliation history
+      // For now, return empty array
+      console.log(`Getting reconciliation history for ${days} days`);
+      return [];
+    } catch (error) {
+      console.error('Error getting reconciliation history:', error);
+      return [];
+    }
+  }
 }
 
 module.exports = new NotionService();

@@ -1,54 +1,58 @@
-const notionClient = require('../../../integrations/notion');
+const stravaService = require('../../../integrations/strava');
 const Workout = require('../models/Workout');
 
 class WorkoutRepository {
   constructor() {
-    this.databaseId = process.env.WORKOUTS_DATABASE_ID;
+    // No database ID needed for Strava
   }
 
   async findByDate(date) {
-    const response = await notionClient.queryDatabase({
-      database_id: this.databaseId,
-      filter: {
-        property: 'Date',
-        date: { equals: date }
-      }
-    });
+    if (!stravaService.isConfigured()) {
+      return [];
+    }
     
-    return response.results.map(this.mapToModel);
+    try {
+      const activities = await stravaService.getActivitiesForDate(date);
+      return activities.map(activity => new Workout(activity));
+    } catch (error) {
+      console.error(`Failed to fetch workouts for ${date}:`, error.message);
+      return [];
+    }
   }
 
   async findByDateRange(startDate, endDate) {
-    const response = await notionClient.findByDateRange(
-      this.databaseId,
-      'Date',
-      startDate,
-      endDate
-    );
+    if (!stravaService.isConfigured()) {
+      return [];
+    }
     
-    return response.results.map(this.mapToModel);
+    try {
+      const activities = await stravaService.getActivitiesInDateRange(startDate, endDate);
+      return activities.map(activity => new Workout(activity));
+    } catch (error) {
+      console.error(`Failed to fetch workouts for range ${startDate} to ${endDate}:`, error.message);
+      return [];
+    }
   }
 
   async findByTypeAndDateRange(workoutType, startDate, endDate) {
-    const response = await notionClient.findWithMultipleFilters(
-      this.databaseId,
-      [
-        {
-          property: 'Workout Type',
-          select: { equals: workoutType }
-        },
-        {
-          property: 'Date',
-          date: { on_or_after: startDate }
-        },
-        {
-          property: 'Date',
-          date: { on_or_before: endDate }
-        }
-      ]
-    );
+    if (!stravaService.isConfigured()) {
+      return [];
+    }
     
-    return response.results.map(this.mapToModel);
+    try {
+      const activities = await stravaService.getActivitiesInDateRange(startDate, endDate);
+      
+      // Filter by workout type
+      const filteredActivities = activities.filter(activity => {
+        const activityWorkout = new Workout(activity);
+        return activityWorkout.type === workoutType;
+      });
+      
+      return filteredActivities.map(activity => new Workout(activity));
+    } catch (error) {
+      console.error(`Failed to fetch ${workoutType} workouts for range ${startDate} to ${endDate}:`, error.message);
+      return [];
+    }
   }
 
   async findRecentWorkouts(days = 7) {
@@ -63,37 +67,24 @@ class WorkoutRepository {
   }
 
   async create(workoutData) {
-    const response = await notionClient.createPage({
-      parent: { database_id: this.databaseId },
-      properties: this.mapToProperties(workoutData)
-    });
+    // Strava doesn't support creating activities via API for most activity types
+    // This would require manual entry in Strava app
+    console.warn('Creating workouts directly via Strava API is not supported for most activity types');
+    console.warn('Please log workout manually in Strava app');
     
-    return this.mapToModel(response);
-  }
-
-  mapToModel(notionPage) {
-    const props = notionPage.properties;
+    // Return a mock workout object for compatibility
     return new Workout({
-      id: notionPage.id,
-      date: props['Date']?.date?.start,
-      type: props['Workout Type']?.select?.name,
-      duration: props['Duration']?.number,
-      calories: props['Calories']?.number,
-      source: props['Source']?.select?.name,
-      notes: props['Notes']?.rich_text?.[0]?.text?.content
+      id: `manual_${Date.now()}`,
+      date: workoutData.date,
+      type: workoutData.type,
+      duration: workoutData.duration,
+      calories: workoutData.calories,
+      source: 'Manual',
+      notes: workoutData.notes || 'Manually logged workout'
     });
   }
 
-  mapToProperties(data) {
-    return {
-      'Date': { date: { start: data.date }},
-      'Workout Type': { select: { name: data.type }},
-      'Duration': { number: data.duration },
-      'Calories': { number: data.calories },
-      'Source': { select: { name: data.source }},
-      'Notes': { rich_text: [{ text: { content: data.notes || '' }}]}
-    };
-  }
+  // Legacy methods for compatibility - no longer needed since we use Workout constructor directly
 }
 
 module.exports = new WorkoutRepository();
