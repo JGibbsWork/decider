@@ -83,7 +83,20 @@ class StravaService {
       before: Math.floor(endOfDay.getTime() / 1000)
     });
 
-    return activities.map(activity => this.mapToWorkout(activity));
+    // Fetch detailed data for each activity to get calories
+    const detailedActivities = await Promise.all(
+      activities.map(async (activity) => {
+        try {
+          const detailed = await this.makeRequest(`/activities/${activity.id}`);
+          return { ...activity, calories: detailed.calories };
+        } catch (error) {
+          console.error(`Failed to fetch detailed data for activity ${activity.id}:`, error);
+          return activity; // Fallback to summary data
+        }
+      })
+    );
+
+    return detailedActivities.map(activity => this.mapToWorkout(activity));
   }
 
   async getActivitiesForDate(date) {
@@ -111,7 +124,20 @@ class StravaService {
       per_page: 200 // Increased limit for date ranges
     });
 
-    return activities.map(activity => this.mapToWorkout(activity));
+    // Fetch detailed data for each activity to get calories
+    const detailedActivities = await Promise.all(
+      activities.map(async (activity) => {
+        try {
+          const detailed = await this.makeRequest(`/activities/${activity.id}`);
+          return { ...activity, calories: detailed.calories };
+        } catch (error) {
+          console.error(`Failed to fetch detailed data for activity ${activity.id}:`, error);
+          return activity; // Fallback to summary data
+        }
+      })
+    );
+
+    return detailedActivities.map(activity => this.mapToWorkout(activity));
   }
 
   mapToWorkout(stravaActivity) {
@@ -122,7 +148,7 @@ class StravaService {
       duration: Math.round(stravaActivity.moving_time / 60), // Convert to minutes
       calories: stravaActivity.calories || null,
       source: 'Strava',
-      notes: `${stravaActivity.name} - Distance: ${(stravaActivity.distance / 1000).toFixed(2)}km`
+      notes: `${stravaActivity.name} - ${stravaActivity.start_date_local.split('T')[0].split('-')[1]}.${stravaActivity.start_date_local.split('T')[0].split('-')[2]}`
     };
   }
 

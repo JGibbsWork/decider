@@ -1,5 +1,5 @@
 const { format, subDays, subWeeks, startOfWeek, endOfWeek } = require('date-fns');
-const notionService = require('../integrations/notion/client');
+const notionClient = require('../integrations/notion/client');
 
 class HistoryService {
   
@@ -96,7 +96,7 @@ class HistoryService {
   // Get bonuses for a date range
   async getBonusesForPeriod(startDate, endDate) {
     try {
-      const response = await notionService.notion.databases.query({
+      const response = await notionClient.queryDatabase({
         database_id: '227e3d1e-e83a-80a4-949b-c62e6fc0c1d0', // BONUSES
         filter: {
           and: [
@@ -140,7 +140,7 @@ class HistoryService {
   // Get punishments for a date range
   async getPunishmentsForPeriod(startDate, endDate) {
     try {
-      const response = await notionService.notion.databases.query({
+      const response = await notionClient.queryDatabase({
         database_id: '227e3d1e-e83a-8065-8d2e-f64bed599adf', // PUNISHMENTS
         filter: {
           and: [
@@ -186,7 +186,7 @@ class HistoryService {
   // Get debts created in a date range
   async getDebtsForPeriod(startDate, endDate) {
     try {
-      const response = await notionService.notion.databases.query({
+      const response = await notionClient.queryDatabase({
         database_id: '227e3d1e-e83a-80b9-b1c3-ef4e6aafcc3e', // DEBT_CONTRACTS
         filter: {
           and: [
@@ -230,7 +230,7 @@ class HistoryService {
   // Get workouts for a date range
   async getWorkoutsForPeriod(startDate, endDate) {
     try {
-      const response = await notionService.notion.databases.query({
+      const response = await notionClient.queryDatabase({
         database_id: '227e3d1e-e83a-8031-a938-e62cedf82f83', // WORKOUTS
         filter: {
           and: [

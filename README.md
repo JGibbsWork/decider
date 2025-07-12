@@ -248,3 +248,42 @@ const response = await fetch('http://localhost:3000/reconcile', {
 const { results } = await response.json();
 // Format results.summary for Discord message
 ```
+
+
+ ✅ Workouts Domain
+
+  - GET /workouts/today - Today's workouts (✅ working)
+  - GET /workouts/week - This week's workouts
+  - GET /workouts/streak - Current workout streak (✅ working: 3 days)
+  - GET /workouts/strava-status - Strava integration status
+
+  ✅ Debts Domain
+
+  - GET /debts/active - Active debts (⚠️ service needs methods)
+  - GET /debts/stats - Debt statistics
+  - GET /debts/overdue - Overdue debts
+  - POST /debts/:id/pay - Process payment
+
+  ✅ Punishments Domain
+
+  - GET /punishments/pending - Pending punishments (✅ working: 2 pending)
+  - GET /punishments/overdue - Overdue punishments
+  - POST /punishments/:id/complete - Mark completed
+  - POST /punishments/check-violations - Check for violations
+
+  ✅ Bonuses Domain
+
+  - GET /bonuses/available - Available bonuses (⚠️ service needs methods)
+  - GET /bonuses/earned - Earned bonuses
+  - POST /bonuses/calculate - Calculate bonuses
+
+  ✅ Rules/System Domain
+
+  - GET /rules/status - Rules status (existing)
+  - POST /rules/modify - Modify rules (existing)
+  - POST /rules/reset - Reset rules (existing)
+  - GET /rules/all - All system rules
+
+  ✅ Financial Domain
+
+  - GET /financial/summary - Financial overview

@@ -33,6 +33,36 @@ class NotionService {
     return response.results;
   }
 
+  // Get workouts for a date range
+  async getWorkoutsForDateRange(startDate, endDate) {
+    const response = await notion.databases.query({
+      database_id: DATABASES.WORKOUTS,
+      filter: {
+        and: [
+          {
+            property: 'Date',
+            date: {
+              on_or_after: startDate
+            }
+          },
+          {
+            property: 'Date',
+            date: {
+              on_or_before: endDate
+            }
+          }
+        ]
+      },
+      sorts: [
+        {
+          property: 'Date',
+          direction: 'ascending'
+        }
+      ]
+    });
+    return response.results;
+  }
+
   // Get active debt contracts
   async getActiveDebts() {
     const response = await notion.databases.query({
@@ -344,6 +374,52 @@ async getDebtsForPeriod(startDate, endDate) {
       return response;
     } catch (error) {
       console.error('Error updating rule modifier:', error);
+      throw error;
+    }
+  }
+
+  // Create workout entry in Notion
+  async createWorkout(workoutData) {
+    try {
+      console.log('🏗️ Creating workout in Notion:', {
+        name: workoutData.name,
+        date: workoutData.date,
+        type: workoutData.type,
+        duration: workoutData.duration,
+        source: workoutData.source
+      });
+      
+      const response = await notion.pages.create({
+        parent: { database_id: DATABASES.WORKOUTS },
+        properties: {
+          Name: {
+            title: [{ text: { content: workoutData.name || 'Workout' } }]
+          },
+          Date: {
+            date: { start: workoutData.date }
+          },
+          'Workout Type': {
+            select: { name: workoutData.type || 'Other' }
+          },
+          Duration: {
+            number: workoutData.duration || 0
+          },
+          Calories: {
+            number: workoutData.calories || null
+          },
+          Source: {
+            select: { name: workoutData.source || 'Manual' }
+          },
+          'Strava ID': {
+            rich_text: [{ text: { content: workoutData.stravaId || '' } }]
+          }
+        }
+      });
+      console.log('✅ Successfully created workout in Notion');
+      return response;
+    } catch (error) {
+      console.error('❌ Error creating workout in Notion:', error);
+      console.error('📋 Workout data that failed:', workoutData);
       throw error;
     }
   }
