@@ -19,12 +19,8 @@ class DailyReconciliationOrchestrator {
           all_toggles_on: false,
           toggle_states: {},
           summary: '',
-          checked_at: null
-        },
-        punishments: {
-          overdue_processed: [],
-          completions: [],
-          new_violations: []
+          checked_at: null,
+          synced_to_notion: false
         },
         workouts: {
           todays_workouts: []
@@ -32,12 +28,21 @@ class DailyReconciliationOrchestrator {
         summary: ''
       };
 
-      // Step 1: Check location tracking toggles
-      console.log('📍 Checking location tracking toggles...');
+      // Step 1: Check location tracking toggles and auto-create Notion entry
+      console.log('📍 Checking location tracking toggles and creating Notion entry...');
       try {
         if (homeassistantService.isConfigured()) {
-          results.location_tracking = await homeassistantService.checkLocationTrackingToggles();
+          // Auto-create Notion entry during daily reconciliation
+          results.location_tracking = await homeassistantService.checkLocationTrackingToggles(true);
           console.log(`Location tracking: ${results.location_tracking.all_toggles_on ? 'All ON' : 'Not all ON'}`);
+          
+          if (results.location_tracking.notion_entry?.created) {
+            console.log('✅ Location tracking entry created in Notion automatically');
+            results.location_tracking.synced_to_notion = true;
+          } else if (results.location_tracking.notion_entry?.error) {
+            console.log(`⚠️ Location entry creation failed: ${results.location_tracking.notion_entry.error}`);
+            results.location_tracking.synced_to_notion = false;
+          }
         } else {
           console.log('⚠️ Home Assistant not configured, skipping location tracking check');
           results.location_tracking.summary = 'Home Assistant not configured';
@@ -47,17 +52,12 @@ class DailyReconciliationOrchestrator {
         results.location_tracking.summary = `Error: ${error.message}`;
       }
 
-      // Step 2: Get today's workout data
+      // Step 2: Get today's workout data (includes automatic Strava sync)
       console.log('🏋️ Analyzing today\'s workouts...');
       results.workouts.todays_workouts = await workoutService.getTodaysWorkouts(today);
       console.log(`Found ${results.workouts.todays_workouts.length} workouts`);
 
-      // Step 3: Process all punishment workflows
-      console.log('⚖️ Processing punishments...');
-      const punishmentResults = await this.processPunishments(today);
-      results.punishments = punishmentResults;
-
-      // Step 4: Generate summary
+      // Step 3: Generate summary
       results.summary = this.generateDailySummary(results);
 
       console.log(`✅ Daily reconciliation complete for ${today}`);
@@ -102,32 +102,25 @@ class DailyReconciliationOrchestrator {
   generateDailySummary(results) {
     const summaryParts = [];
 
-    // Location tracking
+    // Location tracking with auto-sync status
     if (results.location_tracking.all_toggles_on) {
-      summaryParts.push('Location tracking: All toggles ON.');
+      summaryParts.push('Location: All toggles ON.');
     } else if (results.location_tracking.summary) {
-      summaryParts.push(`Location tracking: ${results.location_tracking.summary}`);
+      summaryParts.push(`Location: ${results.location_tracking.summary.split(':')[1]?.trim() || results.location_tracking.summary}`);
+    }
+    
+    if (results.location_tracking.synced_to_notion) {
+      summaryParts.push('Location logged to Notion.');
     }
 
-    // Workouts
+    // Workouts (includes Strava auto-sync)
     if (results.workouts.todays_workouts.length > 0) {
-      summaryParts.push(`Completed ${results.workouts.todays_workouts.length} workout(s).`);
+      summaryParts.push(`${results.workouts.todays_workouts.length} workout(s) completed.`);
+    } else {
+      summaryParts.push('No workouts today.');
     }
 
-    // Punishments
-    if (results.punishments.new_violations.length > 0) {
-      summaryParts.push(`Assigned ${results.punishments.new_violations.length} new punishment(s).`);
-    }
-
-    if (results.punishments.completions.length > 0) {
-      summaryParts.push(`Completed ${results.punishments.completions.length} punishment assignment(s).`);
-    }
-
-    if (results.punishments.overdue_processed.length > 0) {
-      summaryParts.push(`Processed ${results.punishments.overdue_processed.length} overdue punishment(s).`);
-    }
-
-    return summaryParts.length > 0 ? summaryParts.join(' ') : 'No significant activity today.';
+    return summaryParts.length > 0 ? summaryParts.join(' ') : 'Daily check complete.';
   }
 
   // Get comprehensive daily status

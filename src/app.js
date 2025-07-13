@@ -116,6 +116,25 @@ app.get('/workouts/week', async (req, res) => {
   }
 });
 
+// Job applications endpoints
+app.get('/job-applications/weekly', async (req, res) => {
+  try {
+    const notionService = require('./services/integrations/notion');
+    const jobApps = await notionService.getJobApplicationsCountSinceMonday();
+    
+    res.json({
+      success: true,
+      job_applications: jobApps
+    });
+  } catch (error) {
+    console.error('Error fetching weekly job applications:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 
 // Strava activities endpoints
 app.get('/strava/activities/last-week', async (req, res) => {

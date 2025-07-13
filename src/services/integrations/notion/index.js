@@ -12,6 +12,7 @@ const DATABASES = {
   MORNING_CHECKINS: process.env.MORNING_CHECKINS_DATABASE_ID,
   SYSTEM_RULES: process.env.SYSTEM_RULES_DATABASE_ID,
   LOCATION_TRACKING: process.env.LOCATION_TRACKING_DATABASE_ID,
+  JOB_APPLICATIONS: process.env.JOB_APPLICATIONS_DATABASE_ID,
 };
 
 class NotionService {
@@ -317,6 +318,83 @@ class NotionService {
       console.error('❌ Error creating workout in Notion:', error);
       console.error('📋 Workout data that failed:', workoutData);
       throw error;
+    }
+  }
+
+  // Get job applications count since Monday (including Monday)
+  async getJobApplicationsCountSinceMonday() {
+    try {
+      // Calculate Monday of the current week
+      const today = new Date();
+      const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days; otherwise go back to Monday
+      const mondayDate = new Date(today);
+      mondayDate.setDate(today.getDate() - daysToSubtract);
+      mondayDate.setHours(0, 0, 0, 0); // Start of Monday
+      const mondayString = mondayDate.toISOString().split('T')[0];
+
+      console.log(`📊 Counting job applications since Monday: ${mondayString}`);
+
+      // Try multiple approaches since we don't know the exact property names
+      let response;
+      
+      // First try: Common date property names
+      const dateProperties = ['Created time', 'Date', 'Created', 'Date Created', 'Application Date'];
+      
+      for (const propertyName of dateProperties) {
+        try {
+          console.log(`🔍 Trying property: ${propertyName}`);
+          response = await notion.databases.query({
+            database_id: DATABASES.JOB_APPLICATIONS,
+            filter: {
+              property: propertyName,
+              date: {
+                on_or_after: mondayString
+              }
+            }
+          });
+          console.log(`✅ Successfully used property: ${propertyName}`);
+          break;
+        } catch (propertyError) {
+          console.log(`❌ Property '${propertyName}' not found, trying next...`);
+          continue;
+        }
+      }
+
+      // If all date properties failed, get all entries and filter manually
+      if (!response) {
+        console.log('🔄 Falling back to manual filtering...');
+        response = await notion.databases.query({
+          database_id: DATABASES.JOB_APPLICATIONS
+        });
+
+        // Filter manually by created_time (this is always available on pages)
+        const mondayTime = mondayDate.getTime();
+        const filteredResults = response.results.filter(page => {
+          const createdTime = new Date(page.created_time).getTime();
+          return createdTime >= mondayTime;
+        });
+
+        response.results = filteredResults;
+        console.log(`✅ Manual filtering found ${filteredResults.length} entries since Monday`);
+      }
+
+      const count = response.results.length;
+      console.log(`✅ Found ${count} job applications since Monday`);
+
+      return {
+        count: count,
+        since_date: mondayString,
+        applications: response.results,
+        filter_method: response.results.length > 0 ? 'property_filter' : 'manual_filter'
+      };
+    } catch (error) {
+      console.error('❌ Error getting job applications count:', error);
+      return {
+        count: 0,
+        since_date: null,
+        error: error.message
+      };
     }
   }
 
