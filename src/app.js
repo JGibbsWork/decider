@@ -500,36 +500,6 @@ app.post('/teller/tokens/clear', async (req, res) => {
   }
 });
 
-// Debts endpoints
-app.get('/debts/active', async (req, res) => {
-  try {
-    const debtService = require('./services/core/debt');
-    const activeDebts = await debtService.getActiveDebts();
-    
-    res.json({
-      success: true,
-      count: activeDebts.length,
-      debts: activeDebts
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.get('/debts/overdue', async (req, res) => {
-  try {
-    const debtService = require('./services/core/debt');
-    const overdueDebts = await debtService.getOverdueDebts();
-    
-    res.json({
-      success: true,
-      count: overdueDebts.length,
-      debts: overdueDebts
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
 // Punishments endpoints
 app.get('/punishments/pending', async (req, res) => {
@@ -578,54 +548,6 @@ app.post('/punishments/check-violations', async (req, res) => {
   }
 });
 
-// Bonuses endpoints
-app.get('/bonuses/available', async (req, res) => {
-  try {
-    const bonusService = require('./services/core/bonuses');
-    const { date } = req.query;
-    const bonuses = await bonusService.getAvailableBonuses(date || new Date().toISOString().split('T')[0]);
-    
-    res.json({
-      success: true,
-      count: bonuses.length,
-      bonuses: bonuses
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.get('/bonuses/earned', async (req, res) => {
-  try {
-    const bonusService = require('./services/core/bonuses');
-    const { date } = req.query;
-    const bonuses = await bonusService.getEarnedBonuses(date || new Date().toISOString().split('T')[0]);
-    
-    res.json({
-      success: true,
-      count: bonuses.length,
-      bonuses: bonuses
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post('/bonuses/calculate', async (req, res) => {
-  try {
-    const bonusService = require('./services/core/bonuses');
-    const { date } = req.body;
-    const calculation = await bonusService.calculateBonuses(date || new Date().toISOString().split('T')[0]);
-    
-    res.json({
-      success: true,
-      calculation: calculation
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // Status endpoint for monitoring (updated)
 app.get('/status', (req, res) => {
   res.json({
@@ -649,11 +571,72 @@ app.get('/status', (req, res) => {
         key_path: !!process.env.TELLER_KEY_PATH,
         client_id: !!process.env.TELLER_CLIENT_ID,
         environment: process.env.TELLER_ENVIRONMENT || 'sandbox'
+      },
+      homeassistant: {
+        configured: !!(process.env.HOME_ASSISTANT_URL && process.env.HOME_ASSISTANT_TOKEN),
+        url: !!process.env.HOME_ASSISTANT_URL,
+        token: !!process.env.HOME_ASSISTANT_TOKEN
       }
     },
     environment: process.env.NODE_ENV || 'development',
     port: process.env.PORT || 3005
   });
+});
+
+// Home Assistant endpoints
+app.get('/homeassistant/health', async (req, res) => {
+  try {
+    const homeassistantService = require('./services/integrations/homeassistant');
+    const health = await homeassistantService.healthCheck();
+    
+    res.json({
+      success: true,
+      homeassistant: health
+    });
+  } catch (error) {
+    console.error('Error checking Home Assistant health:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/homeassistant/location/toggles', async (req, res) => {
+  try {
+    const homeassistantService = require('./services/integrations/homeassistant');
+    const toggles = await homeassistantService.checkLocationTrackingToggles();
+    
+    res.json({
+      success: true,
+      location_tracking: toggles
+    });
+  } catch (error) {
+    console.error('Error checking location toggles:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/homeassistant/entities/boolean', async (req, res) => {
+  try {
+    const homeassistantService = require('./services/integrations/homeassistant');
+    const booleans = await homeassistantService.getBooleanInputs();
+    
+    res.json({
+      success: true,
+      count: booleans.length,
+      boolean_inputs: booleans
+    });
+  } catch (error) {
+    console.error('Error fetching boolean inputs:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 // Rules/System endpoints

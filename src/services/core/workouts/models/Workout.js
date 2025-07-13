@@ -21,10 +21,6 @@ class Workout {
     return this.type === 'Cardio';
   }
 
-  isValidForBonus() {
-    // Business logic for what qualifies for bonus
-    return this.isYoga() || this.isLifting();
-  }
 
   getDurationInMinutes() {
     // Handle different duration formats if needed

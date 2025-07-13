@@ -257,12 +257,7 @@ class WorkoutService {
     return results;
   }
 
-  async getWorkoutsEligibleForBonus(date) {
-    const workouts = await this.getTodaysWorkouts(date);
-    return workouts.filter(workout => workout.isValidForBonus());
-  }
-
-  // Streak-specific methods for upcoming streak bonuses feature
+  // Streak-specific methods for potential future features
   async getStreakMilestones(date = null) {
     const streak = await this.getCurrentWorkoutStreak(date);
     const milestones = [3, 5, 7, 10, 14, 21, 28];
