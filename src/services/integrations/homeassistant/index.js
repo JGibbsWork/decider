@@ -60,11 +60,11 @@ class HomeAssistantService {
   }
 
   // Check location tracking toggles (the 3 specific ones you mentioned)
-  async checkLocationTrackingToggles() {
+  async checkLocationTrackingToggles(createNotionEntry = false) {
     const locationToggles = [
-      process.env.HOME_ASSISTANT_LOCATION_TOGGLE_1 || 'input_boolean.location_toggle_1',
-      process.env.HOME_ASSISTANT_LOCATION_TOGGLE_2 || 'input_boolean.location_toggle_2', 
-      process.env.HOME_ASSISTANT_LOCATION_TOGGLE_3 || 'input_boolean.location_toggle_3'
+      process.env.HOME_ASSISTANT_COWORK_TOGGLE || 'input_boolean.coWork',
+      process.env.HOME_ASSISTANT_GYM_TOGGLE || 'input_boolean.gym', 
+      process.env.HOME_ASSISTANT_OFFICE_TOGGLE || 'input_boolean.office'
     ];
 
     const toggleStates = await this.checkBooleanToggles(locationToggles);
@@ -74,12 +74,50 @@ class HomeAssistantService {
       `${entityId}: ${state ? 'ON' : 'OFF'}`
     ).join(', ');
 
-    return {
+    const result = {
       all_toggles_on: allOn,
       toggle_states: toggleStates,
       summary: summary,
       checked_at: new Date().toISOString()
     };
+
+    // Create Notion entry if requested
+    if (createNotionEntry) {
+      try {
+        const notionService = require('../notion');
+        
+        // Extract individual toggle states
+        const coWorkToggle = locationToggles[0];
+        const gymToggle = locationToggles[1];
+        const officeToggle = locationToggles[2];
+        
+        const locationData = {
+          date: new Date().toISOString().split('T')[0], // Today's date
+          coWork: toggleStates[coWorkToggle] || false,
+          gym: toggleStates[gymToggle] || false,
+          office: toggleStates[officeToggle] || false,
+          allOn: allOn,
+          checkedAt: result.checked_at,
+          summary: summary
+        };
+
+        const notionEntry = await notionService.createLocationTrackingEntry(locationData);
+        result.notion_entry = {
+          created: true,
+          id: notionEntry.id,
+          url: notionEntry.url
+        };
+        console.log('✅ Created Notion location tracking entry:', notionEntry.id);
+      } catch (error) {
+        console.error('❌ Failed to create Notion location tracking entry:', error.message);
+        result.notion_entry = {
+          created: false,
+          error: error.message
+        };
+      }
+    }
+
+    return result;
   }
 
   // Health check for Home Assistant connection

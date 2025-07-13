@@ -6,11 +6,12 @@ const notion = new Client({
 
 // Database IDs from your Notion workspace
 const DATABASES = {
-  WORKOUTS: '227e3d1e-e83a-8031-a938-e62cedf82f83',
-  BALANCES: '227e3d1e-e83a-8098-b2f0-f0652bf21e24',
-  PUNISHMENTS: '227e3d1e-e83a-8065-8d2e-f64bed599adf',
-  MORNING_CHECKINS: '223e3d1e-e83a-808c-b94f-d2901d63b1cb',
-  SYSTEM_RULES: '227e3d1e-e83a-80e7-9019-e183a59667d8'
+  WORKOUTS: process.env.WORKOUTS_DATABASE_ID,
+  BALANCES: process.env.BALANCES_DATABASE_ID,
+  PUNISHMENTS: process.env.PUNISHMENTS_DATABASE_ID,
+  MORNING_CHECKINS: process.env.MORNING_CHECKINS_DATABASE_ID,
+  SYSTEM_RULES: process.env.SYSTEM_RULES_DATABASE_ID,
+  LOCATION_TRACKING: process.env.LOCATION_TRACKING_DATABASE_ID,
 };
 
 class NotionService {
@@ -213,6 +214,62 @@ class NotionService {
       return response;
     } catch (error) {
       console.error('Error updating rule modifier:', error);
+      throw error;
+    }
+  }
+
+  // Create location tracking entry in Notion
+  async createLocationTrackingEntry(locationData) {
+    try {
+      console.log('📍 Creating location tracking entry in Notion:', {
+        date: locationData.date,
+        coWork: locationData.coWork,
+        gym: locationData.gym,
+        office: locationData.office,
+        allOn: locationData.allOn
+      });
+      
+      // Calculate Monday of the current week for Week Start
+      const currentDate = new Date(locationData.date + 'T00:00:00'); // Ensure we're working with local date
+      const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days; otherwise go back to Monday
+      const weekStart = new Date(currentDate);
+      weekStart.setDate(currentDate.getDate() - daysToSubtract);
+      const weekStartString = weekStart.toISOString().split('T')[0];
+      
+      console.log(`📅 Week Start calculation: Current day of week: ${dayOfWeek}, Days to subtract: ${daysToSubtract}, Week start: ${weekStartString}`);
+
+      const response = await notion.pages.create({
+        parent: { database_id: DATABASES.LOCATION_TRACKING },
+        properties: {
+          'Name': {
+            title: [{ text: { content: `Location Check - ${locationData.date}` } }]
+          },
+          'Date': {
+            date: { start: locationData.date }
+          },
+          'Week Start': {
+            date: { start: weekStartString }
+          },
+          'CoWork': {
+            checkbox: locationData.coWork || false
+          },
+          'Gym': {
+            checkbox: locationData.gym || false
+          },
+          'Office': {
+            checkbox: locationData.office || false
+          },
+          'Notes': {
+            rich_text: [{ text: { content: `Checked on: ${locationData.date.slice(5)}` } }]
+          }
+        }
+      });
+      console.log('✅ Successfully created location tracking entry in Notion');
+      return response;
+    } catch (error) {
+      console.error('❌ Error creating location tracking entry in Notion:', error);
+      console.error('📋 Location data that failed:', locationData);
       throw error;
     }
   }

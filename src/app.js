@@ -605,7 +605,8 @@ app.get('/homeassistant/health', async (req, res) => {
 app.get('/homeassistant/location/toggles', async (req, res) => {
   try {
     const homeassistantService = require('./services/integrations/homeassistant');
-    const toggles = await homeassistantService.checkLocationTrackingToggles();
+    const createEntry = req.query.createEntry === 'true';
+    const toggles = await homeassistantService.checkLocationTrackingToggles(createEntry);
     
     res.json({
       success: true,
@@ -613,6 +614,25 @@ app.get('/homeassistant/location/toggles', async (req, res) => {
     });
   } catch (error) {
     console.error('Error checking location toggles:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.post('/homeassistant/location/track', async (req, res) => {
+  try {
+    const homeassistantService = require('./services/integrations/homeassistant');
+    const toggles = await homeassistantService.checkLocationTrackingToggles(true);
+    
+    res.json({
+      success: true,
+      message: 'Location tracking checked and entry created',
+      location_tracking: toggles
+    });
+  } catch (error) {
+    console.error('Error tracking location:', error);
     res.status(500).json({
       success: false,
       error: error.message
