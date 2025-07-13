@@ -1,6 +1,7 @@
 const punishmentRepo = require('./repository/PunishmentRepository');
 const punishmentAssigner = require('./services/PunishmentAssigner');
 const violationChecker = require('./services/ViolationChecker');
+const threeRoutePunishmentAssigner = require('./services/ThreeRoutePunishmentAssigner');
 
 class PunishmentService {
   
@@ -46,6 +47,41 @@ class PunishmentService {
 
   async updatePunishmentStatus(id, status, completedDate = null) {
     return await punishmentRepo.updateStatus(id, status, completedDate);
+  }
+
+  // 3-Route punishment system methods
+  async assignWeeklyViolationPunishments(violationData) {
+    return await threeRoutePunishmentAssigner.assignWeeklyViolationPunishments(violationData);
+  }
+
+  async getActivePunishmentAdjustments(weekStart) {
+    return await threeRoutePunishmentAssigner.getActivePunishmentAdjustments(weekStart);
+  }
+
+  // Legacy assignment method for backward compatibility
+  async assignPunishment(punishmentData) {
+    try {
+      const punishment = {
+        name: punishmentData.reason || 'Violation Punishment',
+        type: punishmentData.type || 'Cardio',
+        minutes: punishmentData.minutes || 30,
+        dateAssigned: punishmentData.dateAssigned || new Date().toISOString().split('T')[0],
+        dueDate: punishmentData.due_date || punishmentData.dueDate,
+        reason: punishmentData.reason,
+        // Add metadata if provided
+        ...(punishmentData.metadata && { metadata: punishmentData.metadata })
+      };
+
+      return await punishmentRepo.create(punishment);
+    } catch (error) {
+      console.error('Error assigning punishment:', error);
+      throw error;
+    }
+  }
+
+  async getOverduePunishments() {
+    const currentDate = new Date().toISOString().split('T')[0];
+    return await punishmentRepo.findOverdue(currentDate);
   }
 }
 

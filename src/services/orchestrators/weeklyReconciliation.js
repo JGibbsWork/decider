@@ -3,11 +3,14 @@ const { format, startOfWeek, endOfWeek, subWeeks } = require('date-fns');
 // Import domain services
 const workoutService = require('../core/workouts');
 const punishmentService = require('../core/punishments');
+const habitsService = require('../core/habits');
 const notionService = require('../integrations/notion');
 
 // Import services
 const rulesService = require('../core/rules');
 const homeassistantService = require('../integrations/homeassistant');
+const uberEarningsService = require('../integrations/uber/earnings');
+const locationTrackingService = require('../integrations/location/tracking');
 
 class WeeklyReconciliationOrchestrator {
 
@@ -22,9 +25,11 @@ class WeeklyReconciliationOrchestrator {
       const results = {
         week_start: targetWeekStart,
         week_end: targetWeekEnd,
-        job_applications: {
-          weekly_count: 0,
-          since_monday: null
+        habits: {
+          weekly_counts: {},
+          compliance_rate: 0,
+          total_violations: 0,
+          violation_details: ''
         },
         workouts: {
           performance: null,
@@ -38,46 +43,33 @@ class WeeklyReconciliationOrchestrator {
         summary: ''
       };
 
-      // Step 1: Check job applications this week
-      console.log('💼 Checking weekly job applications...');
-      try {
-        const jobAppsData = await notionService.getJobApplicationsCountSinceMonday();
-        results.job_applications.weekly_count = jobAppsData.count;
-        results.job_applications.since_monday = jobAppsData.since_date;
-        console.log(`Found ${jobAppsData.count} job applications since Monday`);
-      } catch (error) {
-        console.error('❌ Error checking job applications:', error.message);
-        results.job_applications.weekly_count = 0;
-        results.job_applications.error = error.message;
-      }
+      // Step 1: Collect all weekly habit data and update Weekly Habits database
+      console.log('📊 Collecting all weekly habit data...');
+      const weeklyHabits = await this.collectAndUpdateWeeklyHabits(targetWeekStart, targetWeekEnd);
+      results.habits = weeklyHabits;
 
-      // Step 2: Analyze weekly workout performance
+      // Step 2: Analyze weekly workout performance (for backward compatibility)
       console.log('🏋️ Analyzing weekly workout performance...');
       results.workouts.performance = await workoutService.analyzeWeeklyPerformance(targetWeekStart, targetWeekEnd);
       console.log(`Found ${results.workouts.performance.total_sessions} workouts: ${results.workouts.performance.yoga_sessions} yoga, ${results.workouts.performance.lifting_sessions} lifting`);
 
-      // Step 3: Check workout requirements and violations
-      console.log('⚠️ Checking weekly workout requirements...');
-      const workoutViolations = await this.checkWorkoutRequirements(results.workouts.performance);
-      results.workouts.violations = workoutViolations;
-      results.workouts.requirements_met = workoutViolations.length === 0;
+      // Step 3: Check violations using Notion formula results
+      console.log('⚠️ Checking violations from Weekly Habits formulas...');
+      const violations = await this.processWeeklyHabitsViolations(weeklyHabits);
+      results.punishments.weekly_violations = violations;
 
-      // Step 4: Check other weekly violations (career/office attendance)
-      console.log('📋 Checking career and office attendance violations...');
-      const careerViolations = await this.checkCareerViolations(targetWeekStart, targetWeekEnd);
-      results.punishments.weekly_violations = [...workoutViolations, ...careerViolations];
-
-      // Step 5: Process violations into punishments
+      // Step 4: Process violations into punishments using new formula-based logic
       if (results.punishments.weekly_violations.length > 0) {
         console.log(`⚖️ Processing ${results.punishments.weekly_violations.length} weekly violation(s)...`);
-        const weeklyPunishments = await this.processWeeklyViolations(results.punishments.weekly_violations);
+        const weeklyPunishments = await this.processFormulaDrivenViolations(weeklyHabits);
         results.punishments.weekly_punishments = weeklyPunishments;
       }
 
-      // Step 6: No additional processing needed (removed Habitica integration)
-      console.log('✅ Weekly violation processing complete');
+      // Step 5: Finalize weekly habits entry
+      console.log('🏁 Finalizing weekly habits entry...');
+      await habitsService.finalizeWeeklyHabits();
 
-      // Step 7: Generate summary
+      // Step 6: Generate summary
       results.summary = this.generateWeeklySummary(results);
 
       console.log(`✅ Weekly reconciliation complete for ${targetWeekStart}`);
@@ -89,6 +81,154 @@ class WeeklyReconciliationOrchestrator {
       console.error('❌ Weekly reconciliation failed:', error);
       throw error;
     }
+  }
+
+  // Collect all weekly habit data and update Weekly Habits database
+  async collectAndUpdateWeeklyHabits(weekStart, weekEnd) {
+    try {
+      console.log(`📊 Collecting weekly habit data for ${weekStart} to ${weekEnd}`);
+
+      // Get or create current week entry
+      const currentWeekHabits = await habitsService.getCurrentWeekHabits();
+
+      // 1. Count workouts (yoga/lifting)
+      const workoutPerformance = await workoutService.analyzeWeeklyPerformance(weekStart, weekEnd);
+      await habitsService.setCurrentWeekProgress('yoga', workoutPerformance.yoga_sessions);
+      await habitsService.setCurrentWeekProgress('lifting', workoutPerformance.lifting_sessions);
+
+      // 2. Count job applications
+      const jobAppsData = await notionService.getJobApplicationsCountSinceMonday();
+      await habitsService.setCurrentWeekProgress('job_applications', jobAppsData.count);
+
+      // 3. Count location-based habits from Location Tracking database
+      const locationCounts = await this.countLocationHabits(weekStart, weekEnd);
+      await habitsService.setCurrentWeekProgress('office', locationCounts.officeDays);
+      await habitsService.setCurrentWeekProgress('cowork', locationCounts.coworkDays);
+      // Note: Gym is tracked in location but not in habits database per your schema
+
+      // 4. Count Uber earnings
+      const uberEarnings = await this.countUberEarnings(weekStart, weekEnd);
+      await habitsService.setCurrentWeekProgress('uber_earnings', uberEarnings);
+
+      // Get final updated week with formula calculations
+      const finalWeekHabits = await habitsService.getCurrentWeekHabits();
+      
+      console.log(`✅ Weekly habits updated:`, {
+        yoga: workoutPerformance.yoga_sessions,
+        lifting: workoutPerformance.lifting_sessions,
+        jobApplications: jobAppsData.count,
+        officeDays: locationCounts.officeDays,
+        coworkDays: locationCounts.coworkDays,
+        gymDays: locationCounts.gymDays,
+        uberEarnings: uberEarnings,
+        complianceRate: finalWeekHabits.complianceRate,
+        totalViolations: finalWeekHabits.totalViolations
+      });
+
+      return {
+        weekly_counts: {
+          yoga_sessions: workoutPerformance.yoga_sessions,
+          lifting_sessions: workoutPerformance.lifting_sessions,
+          job_applications: jobAppsData.count,
+          office_days: locationCounts.officeDays,
+          cowork_days: locationCounts.coworkDays,
+          gym_days: locationCounts.gymDays,
+          uber_earnings: uberEarnings
+        },
+        compliance_rate: finalWeekHabits.complianceRate,
+        total_violations: finalWeekHabits.totalViolations,
+        violation_details: finalWeekHabits.violationDetails
+      };
+
+    } catch (error) {
+      console.error('❌ Error collecting weekly habits:', error);
+      throw error;
+    }
+  }
+
+  // Count location-based habits from Location Tracking database
+  async countLocationHabits(weekStart, weekEnd) {
+    try {
+      console.log(`📍 Counting location habits for ${weekStart} to ${weekEnd}`);
+
+      // Use the dedicated Location Tracking service
+      const locationData = await locationTrackingService.countLocationHabitsForDateRange(weekStart, weekEnd);
+
+      return { 
+        officeDays: locationData.officeDays, 
+        coworkDays: locationData.coworkDays, 
+        gymDays: locationData.gymDays 
+      };
+
+    } catch (error) {
+      console.error('❌ Error counting location habits:', error);
+      return { officeDays: 0, coworkDays: 0, gymDays: 0 };
+    }
+  }
+
+  // Count Uber earnings from Uber Earnings database
+  async countUberEarnings(weekStart, weekEnd) {
+    try {
+      console.log(`🚗 Counting Uber earnings for ${weekStart} to ${weekEnd}`);
+
+      // Use the dedicated Uber Earnings service
+      const totalEarnings = await uberEarningsService.getEarningsForDateRange(weekStart, weekEnd);
+
+      return totalEarnings;
+
+    } catch (error) {
+      console.error('❌ Error counting Uber earnings:', error);
+      return 0;
+    }
+  }
+
+  // Process violations based on Weekly Habits formula results
+  async processWeeklyHabitsViolations(weeklyHabits) {
+    const violations = [];
+
+    if (weeklyHabits.total_violations > 0) {
+      violations.push({
+        type: 'weekly_habits_violations',
+        reason: weeklyHabits.violation_details || `${weeklyHabits.total_violations} habit violations detected`,
+        severity: 'weekly_violation',
+        category: 'habits_violation',
+        violation_count: weeklyHabits.total_violations,
+        compliance_rate: weeklyHabits.compliance_rate
+      });
+    }
+
+    return violations;
+  }
+
+  // Process violations with 3-route punishment system
+  async processFormulaDrivenViolations(weeklyHabits) {
+    try {
+      if (weeklyHabits.total_violations > 0) {
+        console.log(`⚖️ Processing ${weeklyHabits.total_violations} violations with 3-route system`);
+
+        // Prepare violation data for 3-route system
+        const violationData = {
+          totalViolations: weeklyHabits.total_violations,
+          violationDetails: weeklyHabits.violation_details,
+          weekStart: weeklyHabits.weekly_counts?.week_start || format(startOfWeek(subWeeks(new Date(), 1)), 'yyyy-MM-dd'),
+          weekEnd: weeklyHabits.weekly_counts?.week_end || format(endOfWeek(subWeeks(new Date(), 1)), 'yyyy-MM-dd'),
+          habitCounts: weeklyHabits.weekly_counts,
+          complianceRate: weeklyHabits.compliance_rate
+        };
+
+        // Use the 3-route punishment system
+        const punishmentResult = await punishmentService.assignWeeklyViolationPunishments(violationData);
+
+        console.log(`✅ 3-route system assigned ${punishmentResult.assignmentsCreated} punishments: ${punishmentResult.assignments.map(a => `Route ${a.route}`).join(', ')}`);
+
+        return punishmentResult.assignments;
+      }
+
+    } catch (error) {
+      console.error('Error processing 3-route violations:', error);
+    }
+
+    return [];
   }
 
   // Check workout requirements
@@ -233,23 +373,33 @@ class WeeklyReconciliationOrchestrator {
   generateWeeklySummary(results) {
     const summaryParts = [];
 
-    // Job applications
-    if (results.job_applications.weekly_count > 0) {
-      summaryParts.push(`Applied to ${results.job_applications.weekly_count} job(s) this week.`);
-    } else {
-      summaryParts.push('No job applications this week.');
+    // Overall compliance
+    if (results.habits.compliance_rate !== undefined) {
+      const compliancePercent = Math.round(results.habits.compliance_rate * 100);
+      summaryParts.push(`Weekly compliance: ${compliancePercent}%.`);
     }
 
-    // Workout performance
-    if (results.workouts.performance) {
-      summaryParts.push(`Completed ${results.workouts.performance.yoga_sessions} yoga and ${results.workouts.performance.lifting_sessions} lifting sessions.`);
+    // Habit counts
+    const counts = results.habits.weekly_counts;
+    if (counts) {
+      const habitSummary = [];
+      if (counts.yoga_sessions) habitSummary.push(`${counts.yoga_sessions} yoga`);
+      if (counts.lifting_sessions) habitSummary.push(`${counts.lifting_sessions} lifting`);
+      if (counts.job_applications) habitSummary.push(`${counts.job_applications} job apps`);
+      if (counts.office_days) habitSummary.push(`${counts.office_days} office days`);
+      if (counts.cowork_days) habitSummary.push(`${counts.cowork_days} cowork days`);
+      if (counts.uber_earnings) habitSummary.push(`$${counts.uber_earnings} Uber earnings`);
+      
+      if (habitSummary.length > 0) {
+        summaryParts.push(`Completed: ${habitSummary.join(', ')}.`);
+      }
     }
 
     // Violations
-    if (results.punishments.weekly_violations.length > 0) {
-      summaryParts.push(`${results.punishments.weekly_violations.length} weekly violation(s) detected.`);
+    if (results.habits.total_violations > 0) {
+      summaryParts.push(`${results.habits.total_violations} habit violation(s): ${results.habits.violation_details}`);
     } else {
-      summaryParts.push('No weekly violations.');
+      summaryParts.push('No habit violations.');
     }
 
     // Punishments assigned

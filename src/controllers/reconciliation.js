@@ -2,6 +2,56 @@ const dailyReconciliation = require('../services/orchestrators/dailyReconciliati
 const weeklyReconciliation = require('../services/orchestrators/weeklyReconciliation');
 const workoutService = require('../services/core/workouts');
 const notionService = require('../services/integrations/notion');
+const habitsService = require('../services/core/habits');
+
+// Helper function to calculate habit progress for Discord bot
+const calculateHabitProgress = (weeklyHabitsSummary) => {
+  const { progress } = weeklyHabitsSummary;
+  const habits = Object.keys(progress);
+  
+  const onTrackCount = habits.filter(habit => progress[habit].onTrack).length;
+  const totalHabits = habits.length;
+  const offTrackHabits = habits.filter(habit => !progress[habit].onTrack);
+  
+  // Project potential violations based on current progress
+  const projectedViolations = habits.filter(habit => {
+    const { current, target } = progress[habit];
+    const daysLeft = weeklyHabitsSummary.daysRemaining;
+    const totalDays = 7;
+    
+    // Calculate if they can still reach target with remaining days
+    const progressNeeded = target - current;
+    const dailyRateNeeded = daysLeft > 0 ? progressNeeded / daysLeft : progressNeeded;
+    
+    // Different logic for different habit types
+    if (habit === 'jobApplications') {
+      // Job apps can be done any day, but need consistent daily progress
+      return dailyRateNeeded > 5; // More than 5 per day is unrealistic
+    } else if (habit === 'yoga' || habit === 'lifting') {
+      // Workouts are limited by realistic daily capacity
+      return dailyRateNeeded > 1.5; // More than 1.5 workouts per day is unrealistic
+    } else if (habit === 'office' || habit === 'cowork') {
+      // Location-based habits are binary per day
+      return progressNeeded > daysLeft;
+    }
+    
+    return progressNeeded > 0 && daysLeft === 0; // Default: can't catch up if no days left
+  });
+
+  return {
+    on_track_count: onTrackCount,
+    total_habits: totalHabits,
+    off_track_habits: offTrackHabits.map(habit => ({
+      name: habit,
+      current: progress[habit].current,
+      target: progress[habit].target,
+      behind_by: progress[habit].target - progress[habit].current
+    })),
+    projected_violations: projectedViolations,
+    summary: `${onTrackCount}/${totalHabits} habits on track`,
+    status_emoji: onTrackCount === totalHabits ? '🟢' : onTrackCount >= totalHabits * 0.7 ? '🟡' : '🔴'
+  };
+};
 
 // Main daily reconciliation endpoint
 const runReconciliation = async (req, res) => {
@@ -14,14 +64,29 @@ const runReconciliation = async (req, res) => {
     const targetDate = req.body.date || defaultDate;
     console.log(`🔄 Running daily reconciliation for ${targetDate}...`);
 
-    const results = await dailyReconciliation.runDailyReconciliation(targetDate);
+    // Run daily reconciliation and get habit progress in parallel
+    const [results, weeklyHabitsSummary] = await Promise.all([
+      dailyReconciliation.runDailyReconciliation(targetDate),
+      habitsService.getCurrentWeekSummary()
+    ]);
+
+    // Calculate habit progress for Discord bot
+    const habitProgress = calculateHabitProgress(weeklyHabitsSummary);
 
     console.log('✅ Daily reconciliation completed successfully');
     
     res.json({
       success: true,
       type: 'daily',
-      results: results
+      results: results,
+      habits: {
+        weekly_summary: weeklyHabitsSummary,
+        progress: habitProgress,
+        compliance_rate: weeklyHabitsSummary.complianceRate,
+        total_violations: weeklyHabitsSummary.totalViolations,
+        days_elapsed: weeklyHabitsSummary.daysElapsed,
+        days_remaining: weeklyHabitsSummary.daysRemaining
+      }
     });
 
   } catch (error) {

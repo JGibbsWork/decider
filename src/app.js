@@ -135,6 +135,107 @@ app.get('/job-applications/weekly', async (req, res) => {
   }
 });
 
+// Weekly Habits endpoints
+app.get('/habits/current-week', async (req, res) => {
+  try {
+    const habitsService = require('./services/core/habits');
+    const currentWeek = await habitsService.getCurrentWeekHabits();
+    
+    res.json({
+      success: true,
+      current_week: currentWeek
+    });
+  } catch (error) {
+    console.error('Error fetching current week habits:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/habits/summary', async (req, res) => {
+  try {
+    const habitsService = require('./services/core/habits');
+    const summary = await habitsService.getCurrentWeekSummary();
+    
+    res.json({
+      success: true,
+      week_summary: summary
+    });
+  } catch (error) {
+    console.error('Error fetching weekly habits summary:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.post('/habits/sync', async (req, res) => {
+  try {
+    const habitsService = require('./services/core/habits');
+    const syncedWeek = await habitsService.syncCurrentWeekWithActuals();
+    
+    res.json({
+      success: true,
+      message: 'Current week synced with actual data',
+      synced_week: syncedWeek
+    });
+  } catch (error) {
+    console.error('Error syncing weekly habits:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.post('/habits/update/:habitType', async (req, res) => {
+  try {
+    const habitsService = require('./services/core/habits');
+    const { habitType } = req.params;
+    const { increment = 1, absolute } = req.body;
+    
+    let updatedWeek;
+    if (absolute !== undefined) {
+      updatedWeek = await habitsService.setCurrentWeekProgress(habitType, absolute);
+    } else {
+      updatedWeek = await habitsService.updateCurrentWeekProgress(habitType, increment);
+    }
+    
+    res.json({
+      success: true,
+      message: `Updated ${habitType} progress`,
+      updated_week: updatedWeek
+    });
+  } catch (error) {
+    console.error(`Error updating ${req.params.habitType} progress:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/habits/health', async (req, res) => {
+  try {
+    const habitsService = require('./services/core/habits');
+    const health = await habitsService.healthCheck();
+    
+    res.json({
+      success: true,
+      habits_service: health
+    });
+  } catch (error) {
+    console.error('Error checking habits service health:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 
 // Strava activities endpoints
 app.get('/strava/activities/last-week', async (req, res) => {
@@ -159,6 +260,119 @@ app.get('/strava/activities/last-week', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching last week activities:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Uber Earnings endpoints
+app.get('/uber/earnings/current-week', async (req, res) => {
+  try {
+    const uberEarningsService = require('./services/integrations/uber/earnings');
+    const currentWeek = await uberEarningsService.getCurrentWeekEarnings();
+    
+    res.json({
+      success: true,
+      current_week_earnings: currentWeek
+    });
+  } catch (error) {
+    console.error('Error fetching current week Uber earnings:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/uber/earnings/weekly/:weekStart', async (req, res) => {
+  try {
+    const uberEarningsService = require('./services/integrations/uber/earnings');
+    const { weekStart } = req.params;
+    const weeklyData = await uberEarningsService.sumWeeklyEarnings(weekStart);
+    
+    res.json({
+      success: true,
+      weekly_earnings: weeklyData
+    });
+  } catch (error) {
+    console.error(`Error fetching weekly Uber earnings for ${req.params.weekStart}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/uber/earnings/daily/:weekStart/:weekEnd', async (req, res) => {
+  try {
+    const uberEarningsService = require('./services/integrations/uber/earnings');
+    const { weekStart, weekEnd } = req.params;
+    const dailyEntries = await uberEarningsService.getDailyEntries(weekStart, weekEnd);
+    
+    res.json({
+      success: true,
+      daily_entries: dailyEntries
+    });
+  } catch (error) {
+    console.error(`Error fetching daily Uber earnings for ${req.params.weekStart} to ${req.params.weekEnd}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/uber/earnings/savings-rate/:weekStart', async (req, res) => {
+  try {
+    const uberEarningsService = require('./services/integrations/uber/earnings');
+    const { weekStart } = req.params;
+    const savingsRate = await uberEarningsService.calculateEffectiveSavingsRate(weekStart);
+    
+    res.json({
+      success: true,
+      savings_analysis: savingsRate
+    });
+  } catch (error) {
+    console.error(`Error calculating savings rate for ${req.params.weekStart}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/uber/earnings/summary/:weekStart?', async (req, res) => {
+  try {
+    const uberEarningsService = require('./services/integrations/uber/earnings');
+    const { weekStart } = req.params;
+    const summary = await uberEarningsService.getWeeklySummary(weekStart);
+    
+    res.json({
+      success: true,
+      weekly_summary: summary
+    });
+  } catch (error) {
+    console.error(`Error fetching Uber earnings summary:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/uber/earnings/health', async (req, res) => {
+  try {
+    const uberEarningsService = require('./services/integrations/uber/earnings');
+    const health = await uberEarningsService.healthCheck();
+    
+    res.json({
+      success: true,
+      uber_earnings: health
+    });
+  } catch (error) {
+    console.error('Error checking Uber earnings health:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -520,6 +734,71 @@ app.post('/teller/tokens/clear', async (req, res) => {
 });
 
 
+// 3-Route Punishment System endpoints
+app.post('/punishments/assign-weekly-violations', async (req, res) => {
+  try {
+    const punishmentService = require('./services/core/punishments');
+    const violationData = req.body;
+    
+    const result = await punishmentService.assignWeeklyViolationPunishments(violationData);
+    
+    res.json({
+      success: true,
+      punishment_result: result
+    });
+  } catch (error) {
+    console.error('Error assigning weekly violation punishments:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/punishments/adjustments/:weekStart', async (req, res) => {
+  try {
+    const punishmentService = require('./services/core/punishments');
+    const { weekStart } = req.params;
+    
+    const adjustments = await punishmentService.getActivePunishmentAdjustments(weekStart);
+    
+    res.json({
+      success: true,
+      active_adjustments: adjustments
+    });
+  } catch (error) {
+    console.error(`Error getting punishment adjustments for ${req.params.weekStart}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/punishments/route-summary/:weekStart', async (req, res) => {
+  try {
+    const punishmentService = require('./services/core/punishments');
+    const { weekStart } = req.params;
+    
+    // This would get a summary of all 3-route punishments for a given week
+    // For now, return the adjustments data
+    const adjustments = await punishmentService.getActivePunishmentAdjustments(weekStart);
+    
+    res.json({
+      success: true,
+      week_start: weekStart,
+      route_summary: adjustments,
+      message: 'Route summary feature coming soon'
+    });
+  } catch (error) {
+    console.error(`Error getting route summary for ${req.params.weekStart}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Punishments endpoints
 app.get('/punishments/pending', async (req, res) => {
   try {
@@ -602,6 +881,176 @@ app.get('/status', (req, res) => {
   });
 });
 
+// Location Tracking endpoints
+app.get('/location/tracking/current-week', async (req, res) => {
+  try {
+    const locationTrackingService = require('./services/integrations/location/tracking');
+    const currentWeek = await locationTrackingService.getCurrentWeekLocationData();
+    
+    res.json({
+      success: true,
+      current_week_location: currentWeek
+    });
+  } catch (error) {
+    console.error('Error fetching current week location data:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/location/tracking/weekly/:weekStart', async (req, res) => {
+  try {
+    const locationTrackingService = require('./services/integrations/location/tracking');
+    const { weekStart } = req.params;
+    const weeklyData = await locationTrackingService.countAllLocationHabits(weekStart);
+    
+    res.json({
+      success: true,
+      weekly_location: weeklyData
+    });
+  } catch (error) {
+    console.error(`Error fetching weekly location data for ${req.params.weekStart}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/location/tracking/office/:weekStart', async (req, res) => {
+  try {
+    const locationTrackingService = require('./services/integrations/location/tracking');
+    const { weekStart } = req.params;
+    const officeData = await locationTrackingService.countOfficeDays(weekStart);
+    
+    res.json({
+      success: true,
+      office_days: officeData
+    });
+  } catch (error) {
+    console.error(`Error fetching office days for ${req.params.weekStart}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/location/tracking/cowork/:weekStart', async (req, res) => {
+  try {
+    const locationTrackingService = require('./services/integrations/location/tracking');
+    const { weekStart } = req.params;
+    const coworkData = await locationTrackingService.countCoworkDays(weekStart);
+    
+    res.json({
+      success: true,
+      cowork_days: coworkData
+    });
+  } catch (error) {
+    console.error(`Error fetching cowork days for ${req.params.weekStart}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/location/tracking/gym/:weekStart', async (req, res) => {
+  try {
+    const locationTrackingService = require('./services/integrations/location/tracking');
+    const { weekStart } = req.params;
+    const gymData = await locationTrackingService.countGymDays(weekStart);
+    
+    res.json({
+      success: true,
+      gym_days: gymData
+    });
+  } catch (error) {
+    console.error(`Error fetching gym days for ${req.params.weekStart}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/location/tracking/entries/:weekStart', async (req, res) => {
+  try {
+    const locationTrackingService = require('./services/integrations/location/tracking');
+    const { weekStart } = req.params;
+    const entries = await locationTrackingService.getWeeklyLocationEntries(weekStart);
+    
+    res.json({
+      success: true,
+      location_entries: entries
+    });
+  } catch (error) {
+    console.error(`Error fetching location entries for ${req.params.weekStart}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/location/tracking/validate/:weekStart', async (req, res) => {
+  try {
+    const locationTrackingService = require('./services/integrations/location/tracking');
+    const { weekStart } = req.params;
+    const validation = await locationTrackingService.validateWeekData(weekStart);
+    
+    res.json({
+      success: true,
+      validation: validation
+    });
+  } catch (error) {
+    console.error(`Error validating location data for ${req.params.weekStart}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/location/tracking/summary/:weekStart?', async (req, res) => {
+  try {
+    const locationTrackingService = require('./services/integrations/location/tracking');
+    const { weekStart } = req.params;
+    const summary = await locationTrackingService.getWeeklySummary(weekStart);
+    
+    res.json({
+      success: true,
+      weekly_summary: summary
+    });
+  } catch (error) {
+    console.error(`Error fetching location tracking summary:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/location/tracking/health', async (req, res) => {
+  try {
+    const locationTrackingService = require('./services/integrations/location/tracking');
+    const health = await locationTrackingService.healthCheck();
+    
+    res.json({
+      success: true,
+      location_tracking: health
+    });
+  } catch (error) {
+    console.error('Error checking location tracking health:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Home Assistant endpoints
 app.get('/homeassistant/health', async (req, res) => {
   try {
@@ -671,6 +1120,251 @@ app.get('/homeassistant/entities/boolean', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching boolean inputs:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Testing and Validation endpoints
+app.post('/test/complete-flow', async (req, res) => {
+  try {
+    const habitTrackingValidator = require('./services/testing/HabitTrackingFlowValidator');
+    
+    console.log('🧪 Starting complete habit tracking flow validation...');
+    const results = await habitTrackingValidator.runCompleteValidation();
+    
+    res.json({
+      success: results.summary.overallSuccess,
+      validation_results: results,
+      message: results.summary.overallSuccess ? 
+        'Complete habit tracking flow validation passed' : 
+        'Validation completed with issues'
+    });
+  } catch (error) {
+    console.error('Error running complete flow validation:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/test/habits-service', async (req, res) => {
+  try {
+    const habitTrackingValidator = require('./services/testing/HabitTrackingFlowValidator');
+    const results = await habitTrackingValidator.validateHabitsServiceOnly();
+    
+    res.json({
+      success: results.validation_passed,
+      habits_service_validation: results
+    });
+  } catch (error) {
+    console.error('Error validating habits service:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/test/uber-earnings', async (req, res) => {
+  try {
+    const habitTrackingValidator = require('./services/testing/HabitTrackingFlowValidator');
+    const results = await habitTrackingValidator.validateUberEarningsOnly();
+    
+    res.json({
+      success: results.validation_passed,
+      uber_earnings_validation: results
+    });
+  } catch (error) {
+    console.error('Error validating Uber earnings:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/test/location-tracking', async (req, res) => {
+  try {
+    const habitTrackingValidator = require('./services/testing/HabitTrackingFlowValidator');
+    const results = await habitTrackingValidator.validateLocationTrackingOnly();
+    
+    res.json({
+      success: results.validation_passed,
+      location_tracking_validation: results
+    });
+  } catch (error) {
+    console.error('Error validating location tracking:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.post('/test/sample-data', async (req, res) => {
+  try {
+    const { weekStart, weekEnd } = req.body;
+    
+    if (!weekStart || !weekEnd) {
+      return res.status(400).json({
+        success: false,
+        error: 'weekStart and weekEnd are required in request body'
+      });
+    }
+
+    const habitTrackingValidator = require('./services/testing/HabitTrackingFlowValidator');
+    
+    // Create sample data for the specified week
+    const testWeek = { weekStart, weekEnd };
+    const sampleData = await habitTrackingValidator.createSampleData(testWeek);
+    
+    res.json({
+      success: true,
+      message: `Sample data created for week ${weekStart} to ${weekEnd}`,
+      sample_data: sampleData,
+      warning: 'This creates real data in your Notion databases. Manual cleanup required.'
+    });
+  } catch (error) {
+    console.error('Error creating sample data:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.post('/test/punishment-scenarios', async (req, res) => {
+  try {
+    const habitTrackingValidator = require('./services/testing/HabitTrackingFlowValidator');
+    const results = await habitTrackingValidator.testPunishmentScenarios();
+    
+    const allPassed = results.every(r => !r.error && r.routesMatch);
+    
+    res.json({
+      success: allPassed,
+      punishment_scenario_results: results,
+      message: allPassed ? 
+        'All punishment scenarios passed' : 
+        'Some punishment scenarios failed'
+    });
+  } catch (error) {
+    console.error('Error testing punishment scenarios:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/test/daily-reconciliation-response', async (req, res) => {
+  try {
+    const habitTrackingValidator = require('./services/testing/HabitTrackingFlowValidator');
+    const results = await habitTrackingValidator.testDailyReconciliationResponse();
+    
+    res.json({
+      success: !!results.habits,
+      daily_reconciliation_test: results,
+      message: results.habits ? 
+        'Daily reconciliation includes habit progress data' : 
+        'Daily reconciliation missing habit progress data'
+    });
+  } catch (error) {
+    console.error('Error testing daily reconciliation response:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/test/integration-health', async (req, res) => {
+  try {
+    const habitsService = require('./services/core/habits');
+    const uberEarningsService = require('./services/integrations/uber/earnings');
+    const locationTrackingService = require('./services/integrations/location/tracking');
+    const punishmentService = require('./services/core/punishments');
+
+    const healthChecks = await Promise.allSettled([
+      habitsService.healthCheck(),
+      uberEarningsService.healthCheck(),
+      locationTrackingService.healthCheck(),
+      punishmentService.getPendingPunishments() // Test punishment service
+    ]);
+
+    const [habitsHealth, uberHealth, locationHealth, punishmentTest] = healthChecks;
+
+    const allHealthy = healthChecks.every(check => check.status === 'fulfilled');
+
+    res.json({
+      success: allHealthy,
+      integration_health: {
+        habits_service: habitsHealth.status === 'fulfilled' ? habitsHealth.value : { error: habitsHealth.reason?.message },
+        uber_earnings_service: uberHealth.status === 'fulfilled' ? uberHealth.value : { error: uberHealth.reason?.message },
+        location_tracking_service: locationHealth.status === 'fulfilled' ? locationHealth.value : { error: locationHealth.reason?.message },
+        punishment_service: punishmentTest.status === 'fulfilled' ? { status: 'healthy', tested: 'getPendingPunishments' } : { error: punishmentTest.reason?.message }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error checking integration health:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Discord Bot Integration Test endpoint
+app.get('/test/discord-bot-data', async (req, res) => {
+  try {
+    // Simulate the data that would be sent to Discord bot
+    const reconciliationController = require('./controllers/reconciliation');
+    
+    // Mock request for daily reconciliation
+    const mockReq = {
+      body: { date: new Date().toISOString().split('T')[0] },
+      headers: { accept: 'application/json' }
+    };
+    
+    const mockRes = {
+      json: (data) => data,
+      status: (code) => ({ json: (data) => ({ status: code, ...data }) })
+    };
+
+    // Get the data that would be returned to Discord bot
+    const discordData = await new Promise((resolve, reject) => {
+      const originalJson = mockRes.json;
+      mockRes.json = (data) => {
+        resolve(data);
+        return originalJson(data);
+      };
+      
+      reconciliationController.runReconciliation(mockReq, mockRes).catch(reject);
+    });
+
+    // Validate Discord bot data structure
+    const hasRequiredFields = !!(
+      discordData.success &&
+      discordData.type === 'daily' &&
+      discordData.results &&
+      discordData.habits
+    );
+
+    res.json({
+      success: hasRequiredFields,
+      discord_bot_data: discordData,
+      data_structure_valid: hasRequiredFields,
+      message: hasRequiredFields ? 
+        'Discord bot data structure is valid' : 
+        'Discord bot data structure is invalid or incomplete'
+    });
+
+  } catch (error) {
+    console.error('Error testing Discord bot data:', error);
     res.status(500).json({
       success: false,
       error: error.message
