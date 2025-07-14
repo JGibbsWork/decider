@@ -1394,6 +1394,7 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
+
 // Start server
 const port = process.env.PORT || 3005;
 app.listen(port, () => {
