@@ -1372,6 +1372,95 @@ app.get('/test/discord-bot-data', async (req, res) => {
   }
 });
 
+// Reconciliation dependency check endpoint
+app.get('/reconciliation/dependencies', async (req, res) => {
+  try {
+    const requiredEnvVars = [
+      'NOTION_TOKEN',
+      'WORKOUTS_DATABASE_ID',
+      'PUNISHMENTS_DATABASE_ID',
+      'LOCATION_TRACKING_DATABASE_ID',
+      'JOB_APPLICATIONS_DATABASE_ID',
+      'WEEKLY_HABITS_DATABASE_ID',
+      'UBER_EARNINGS_DATABASE_ID',
+      'SYSTEM_RULES_DATABASE_ID'
+    ];
+
+    const optionalEnvVars = [
+      'HOME_ASSISTANT_URL',
+      'HOME_ASSISTANT_TOKEN',
+      'STRAVA_CLIENT_ID',
+      'STRAVA_ACCESS_TOKEN'
+    ];
+
+    const missingRequired = requiredEnvVars.filter(env => !process.env[env] || process.env[env].includes('your_') || process.env[env].includes('_here'));
+    const missingOptional = optionalEnvVars.filter(env => !process.env[env] || process.env[env].includes('your_'));
+
+    const serviceTests = [];
+
+    // Test each service
+    try {
+      const habitsService = require('./services/core/habits');
+      const health = await habitsService.healthCheck();
+      serviceTests.push({ service: 'habits', status: health.status, required: true });
+    } catch (error) {
+      serviceTests.push({ service: 'habits', status: 'failed', error: error.message, required: true });
+    }
+
+    try {
+      const uberEarningsService = require('./services/integrations/uber/earnings');
+      const health = await uberEarningsService.healthCheck();
+      serviceTests.push({ service: 'uber_earnings', status: health.status, required: true });
+    } catch (error) {
+      serviceTests.push({ service: 'uber_earnings', status: 'failed', error: error.message, required: true });
+    }
+
+    try {
+      const locationTrackingService = require('./services/integrations/location/tracking');
+      const health = await locationTrackingService.healthCheck();
+      serviceTests.push({ service: 'location_tracking', status: health.status, required: true });
+    } catch (error) {
+      serviceTests.push({ service: 'location_tracking', status: 'failed', error: error.message, required: true });
+    }
+
+    try {
+      const homeassistantService = require('./services/integrations/homeassistant');
+      const isConfigured = homeassistantService.isConfigured();
+      serviceTests.push({ service: 'home_assistant', status: isConfigured ? 'configured' : 'not_configured', required: false });
+    } catch (error) {
+      serviceTests.push({ service: 'home_assistant', status: 'failed', error: error.message, required: false });
+    }
+
+    const allRequiredServicesHealthy = serviceTests.filter(s => s.required).every(s => s.status === 'healthy');
+    const readyForReconciliation = missingRequired.length === 0 && allRequiredServicesHealthy;
+
+    res.json({
+      success: readyForReconciliation,
+      ready_for_reconciliation: readyForReconciliation,
+      environment_variables: {
+        missing_required: missingRequired,
+        missing_optional: missingOptional,
+        required_count: requiredEnvVars.length,
+        configured_count: requiredEnvVars.length - missingRequired.length
+      },
+      service_health: serviceTests,
+      recommendations: [
+        missingRequired.length > 0 ? `Configure missing required environment variables: ${missingRequired.join(', ')}` : null,
+        !allRequiredServicesHealthy ? 'Fix service health issues before running reconciliation' : null,
+        missingOptional.includes('HOME_ASSISTANT_URL') ? 'Consider setting up Home Assistant for improved location tracking' : null,
+        missingOptional.includes('STRAVA_CLIENT_ID') ? 'Configure Strava integration for workout tracking' : null
+      ].filter(r => r !== null)
+    });
+
+  } catch (error) {
+    console.error('Error checking reconciliation dependencies:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Rules/System endpoints
 app.get('/rules/status', reconciliationController.getRulesStatus);
 app.post('/rules/modify', reconciliationController.updateRuleModifier);
