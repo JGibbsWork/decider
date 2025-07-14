@@ -148,7 +148,7 @@ class DailyReconciliationOrchestrator {
     return {
       pending_count: pendingPunishments.length,
       total_minutes: pendingPunishments.reduce((sum, p) => 
-        sum + (p.properties['Minutes'].number || 0), 0
+        sum + (p.properties['Minutes Required'].number || 0), 0
       )
     };
   }
